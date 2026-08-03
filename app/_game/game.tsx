@@ -4,6 +4,18 @@ import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 import { PlayerCard, STYLE } from "./card";
 import { TIERS, drawPack, groupByTier, tierRankOf, type Card, type SportConfig, type TierKey } from "./deck";
+import {
+  applyRound,
+  battleEnd,
+  frontOf,
+  isFinalRound,
+  resolveRound,
+  stalemateLimit,
+  survivorsOf,
+  type BattleEnd,
+  type BattleSide,
+  type RoundResult,
+} from "./battle";
 import { KBO } from "../_sports/kbo";
 import { EPL } from "../_sports/epl";
 
@@ -11,8 +23,12 @@ import { EPL } from "../_sports/epl";
 // 그래서 서버 컴포넌트인 page.tsx는 key만 문자열로 넘기고, 클라이언트에서 실제 설정을 찾는다.
 const SPORTS: Record<SportConfig["key"], SportConfig> = { kbo: KBO, epl: EPL };
 
-type Phase = "setup" | "picking" | "opening" | "revealing" | "result";
+type Phase = "setup" | "picking" | "opening" | "revealing" | "result" | "battle";
 type OpenStage = "reposition" | "tear" | "drop";
+// 대결 한 판의 연출 단계. idle: 판정 전/후 대기, clash: 충돌, judge: 판정(빛나거나 파괴)
+type BattleStage = "idle" | "clash" | "judge";
+// 판정 결과 + 그 판을 계산할 때의 덱/quietRounds 스냅샷. 타이머가 끝나면 이걸로 applyRound를 커밋한다.
+type BattleAnim = { result: RoundResult; beforeDecks: Card[][]; beforeQuiet: number; final: boolean };
 
 // 1P 하늘색 · 2P 로즈 · 3P 앰버 · 4P 에메랄드
 // grad는 팩 선택 단계와 손패 카드 뒷면에 똑같이 쓴다(고른 팩 색이 그대로 손패로 이어지게).
@@ -25,6 +41,14 @@ const PLAYERS = [
 
 const TIER_LABEL = Object.fromEntries(TIERS.map((t) => [t.key, t.label])) as Record<TierKey, string>;
 const SCORE_OF = Object.fromEntries(TIERS.map((t) => [t.key, t.score])) as Record<TierKey, number>;
+
+// 판정 결과를 글로 요약. 연출이 안 보여도(스크린리더, prefers-reduced-motion) 결과를 알 수 있게 aria-live로 읽힌다.
+function roundSummary(r: RoundResult, final: boolean): string {
+  const label = (e: BattleSide) => `${PLAYERS[e.player].name} ${TIER_LABEL[e.card.tier]}`;
+  const prefix = final ? "마지막 승부. " : "";
+  if (r.draw) return `${prefix}${r.winners.map(label).join(", ")} 무승부`;
+  return `${prefix}${r.winners.map(label).join(", ")} 승, ${r.losers.map(label).join(", ") || "없음"} 파괴`;
+}
 
 // 봉지 위·아래 핑킹가위 에지. 톱니는 잘고 촘촘하게.
 const TEETH = 34; // 팩 전체 폭 기준 톱니 개수
@@ -96,6 +120,55 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
       lastFocusedRef.current?.focus();
     };
   }, [overlayCard]);
+
+  // battle: 대결용 덱(원본 revealed와 별개), 판 번호, 연출 단계, 종료 정보
+  const [battleDecks, setBattleDecks] = useState<Card[][]>([]);
+  const [battleRound, setBattleRound] = useState(0);
+  const [battleAnim, setBattleAnim] = useState<BattleAnim | null>(null);
+  const [battleStage, setBattleStage] = useState<BattleStage>("idle");
+  const [quietRounds, setQuietRounds] = useState(0);
+  const [battleFinish, setBattleFinish] = useState<BattleEnd | null>(null);
+
+  function startBattle() {
+    setBattleDecks(revealed.map((stack) => [...stack])); // 원본 revealed는 복귀 시 그대로 남아야 해서 복사
+    setBattleRound(0);
+    setBattleAnim(null);
+    setBattleStage("idle");
+    setQuietRounds(0);
+    setBattleFinish(null);
+    setPhase("battle");
+  }
+
+  // 한 판 진행: 판정은 바로 하되(등급/막배틀 rating은 battle.ts가 가린다), 덱 반영은
+  // 연출이 끝난 뒤(judge 단계 종료 시점)에 커밋한다. beforeDecks/beforeQuiet를 같이 들고 있어
+  // 커밋 시점에 다른 state를 다시 안 읽어도 된다.
+  function playRound() {
+    if (battleAnim || battleFinish) return;
+    const result = resolveRound(battleDecks);
+    if (!result) return;
+    setBattleAnim({ result, beforeDecks: battleDecks, beforeQuiet: quietRounds, final: isFinalRound(battleDecks) });
+    setBattleRound((n) => n + 1);
+    setBattleStage("clash");
+  }
+
+  useEffect(() => {
+    if (!battleAnim) return;
+    const t1 = setTimeout(() => setBattleStage("judge"), 700);
+    const t2 = setTimeout(() => {
+      const next = applyRound(battleAnim.beforeDecks, battleAnim.result);
+      const quiet = battleAnim.result.losers.length === 0 ? battleAnim.beforeQuiet + 1 : 0;
+      setBattleDecks(next);
+      setQuietRounds(quiet);
+      const end = battleEnd(next, quiet, stalemateLimit(next));
+      if (end.finished) setBattleFinish(end);
+      setBattleAnim(null);
+      setBattleStage("idle");
+    }, 1900);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [battleAnim]);
 
   function startGame() {
     // 팩끼리도 중복 금지: 한 팩을 뽑을 때마다 그 카드들을 풀에서 빼고 다음 팩을 뽑는다.
@@ -191,6 +264,12 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
     setTurn(0);
     setSpotlight(null);
     setOverlayCard(null);
+    setBattleDecks([]);
+    setBattleRound(0);
+    setBattleAnim(null);
+    setBattleStage("idle");
+    setQuietRounds(0);
+    setBattleFinish(null);
   }
 
   const scores = revealed.map((stack, p) => ({ p, score: stack.reduce((s, c) => s + SCORE_OF[c.tier], 0) }));
@@ -426,6 +505,157 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
     );
   }
 
+  // 대결 화면. 판정 전/후 대기(battleAnim 없음)와 진행 중(battleAnim 있음)을 같은 자리에 그린다.
+  // 카드 얼굴은 renderStacks와 별개로 PlayerCard(mini)를 바로 나열한다.
+  function renderBattle() {
+    const finalUp = !battleAnim && !battleFinish && battleRound > 0 && isFinalRound(battleDecks);
+    return (
+      <div className="flex min-h-[80vh] flex-col justify-between gap-8 py-4">
+        <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
+          {Array.from({ length: numPlayers }, (_, p) => p).map((p) => {
+            const n = battleDecks[p].length;
+            return (
+              <div
+                key={p}
+                className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm transition-opacity ${
+                  n > 0 ? "bg-white/5" : "bg-white/[.03] opacity-40"
+                }`}
+              >
+                <span className={`font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</span>
+                <span className="font-black tabular-nums">{n}</span>
+                {n === 0 && <span className="text-xs text-zinc-500">탈락</span>}
+              </div>
+            );
+          })}
+        </div>
+
+        {battleFinish ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-5 text-center">
+            <p aria-live="polite" className="text-2xl font-black">
+              {battleFinish.stalemate
+                ? "무승부 — 공동 우승"
+                : `${battleFinish.champions.map((p) => PLAYERS[p].name).join(", ")} 우승!`}
+            </p>
+            <div className="flex flex-wrap justify-center gap-6">
+              {battleFinish.champions.map((p) => (
+                <div key={p} className="flex flex-col items-center gap-2">
+                  <span className={`font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</span>
+                  <div className="flex flex-wrap justify-center gap-1">
+                    {battleDecks[p].map((card) => (
+                      <div key={card.id} className="w-16 sm:w-24">
+                        <PlayerCard card={card} sport={sport} size="mini" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setPhase("result")}
+                className="rounded-xl bg-white px-4 py-1.5 text-sm font-bold text-zinc-950 transition hover:bg-zinc-200 active:scale-[.97]"
+              >
+                결과로 돌아가기
+              </button>
+              <button
+                type="button"
+                onClick={resetGame}
+                className="rounded-xl bg-white/10 px-4 py-1.5 text-sm font-bold text-zinc-200 transition hover:bg-white/20 active:scale-[.97]"
+              >
+                다시하기
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-1 flex-col items-center justify-center gap-3">
+              {battleAnim?.final && (
+                <p className="text-center text-xs font-bold tracking-wide text-amber-400 uppercase">마지막 승부</p>
+              )}
+              {battleAnim && battleStage === "judge" && battleAnim.result.draw && (
+                <p className="text-center text-lg font-black text-zinc-200">무승부</p>
+              )}
+              <p aria-live="polite" className="sr-only">
+                {battleAnim && battleStage === "judge" ? roundSummary(battleAnim.result, battleAnim.final) : ""}
+              </p>
+
+              <div className="relative grid grid-cols-2 items-end justify-items-center gap-3 sm:flex sm:flex-nowrap sm:justify-center sm:gap-6">
+                {!battleAnim
+                  ? survivorsOf(battleDecks).map((p) => {
+                      const card = frontOf(battleDecks[p])!;
+                      return (
+                        <div key={p} className="flex w-full max-w-[150px] flex-col items-center gap-1 sm:w-32 sm:max-w-none">
+                          <span className={`text-xs font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</span>
+                          <PlayerCard key={card.id} card={card} sport={sport} size="mini" />
+                        </div>
+                      );
+                    })
+                  : battleAnim.result.entries.map((entry, i, all) => {
+                      const isWinner = battleAnim.result.winners.some((w) => w.player === entry.player);
+                      const judge = battleStage === "judge";
+                      const bx = (i - (all.length - 1) / 2) * 40;
+                      const faceClass =
+                        battleStage === "clash"
+                          ? "animate-[battle-approach_.5s_ease-out_both]"
+                          : judge
+                            ? isWinner
+                              ? "animate-[battle-win-glow_.5s_ease-in-out_2]"
+                              : "animate-[battle-lose-shatter_.7s_ease-in_forwards]"
+                            : "";
+                      return (
+                        <div key={entry.player} className="flex w-full max-w-[150px] flex-col items-center gap-1 sm:w-32 sm:max-w-none">
+                          <span className={`text-xs font-bold ${PLAYERS[entry.player].text}`}>
+                            {PLAYERS[entry.player].name}
+                          </span>
+                          <div className={faceClass} style={{ "--bx": `${bx}px` } as CSSProperties}>
+                            <PlayerCard card={entry.card} sport={sport} size="mini" />
+                          </div>
+                          {judge && (
+                            <span
+                              className={`text-[11px] font-bold ${isWinner ? "text-emerald-400" : "text-red-400"}`}
+                            >
+                              {isWinner ? (battleAnim.result.draw ? "무승부" : "승") : "파괴"}
+                            </span>
+                          )}
+                          {battleAnim.final && (
+                            <span className="text-[10px] text-zinc-500 tabular-nums">
+                              활약도 {entry.card.rating.toFixed(1)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                {battleAnim && battleStage === "clash" && (
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 m-auto h-20 w-20 animate-[battle-flash_.4s_ease-out_both] rounded-full bg-white/70 blur-md"
+                    style={{ animationDelay: "280ms" }}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-2">
+              <p className="text-sm text-zinc-500 tabular-nums">
+                {battleRound === 0 ? "대결 준비" : `${battleRound}판`}
+                {finalUp && " · 다음이 마지막 승부"}
+              </p>
+              <button
+                type="button"
+                onClick={playRound}
+                disabled={!!battleAnim}
+                className="rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-6 py-2.5 font-bold text-zinc-950 transition hover:brightness-110 active:scale-[.98] disabled:opacity-50"
+              >
+                {battleRound === 0 ? "대결 시작" : "다음 판"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-4 sm:py-6">
       {gradeGuide()}
@@ -618,12 +848,22 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
             >
               다시하기
             </button>
+            <button
+              type="button"
+              onClick={startBattle}
+              disabled={survivorsOf(revealed).length < 2}
+              className="rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-1.5 text-sm font-bold text-zinc-950 transition hover:brightness-110 active:scale-[.97] disabled:opacity-40"
+            >
+              대결하기
+            </button>
           </div>
 
           {/* 순위표는 점수순이지만 스택은 1P부터 그대로 둔다(누가 뭘 뽑았는지 자리로 찾게) */}
           {renderStacks(Array.from({ length: numPlayers }, (_, p) => p))}
         </div>
       )}
+
+      {phase === "battle" && renderBattle()}
 
       {overlayCard && (
         <div

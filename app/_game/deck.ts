@@ -45,6 +45,13 @@ export function tierRankOf(tier: TierKey): number {
   return TIERS.length - TIERS.findIndex((t) => t.key === tier);
 }
 
+const SCORE_BY_TIER = Object.fromEntries(TIERS.map((t) => [t.key, t.score])) as Record<TierKey, number>;
+
+/** 등급 점수. 게임 점수 합산과 대결 승패 판정에 같이 쓴다. */
+export function scoreOf(tier: TierKey): number {
+  return SCORE_BY_TIER[tier];
+}
+
 export function groupByTier(pool: Card[]): Record<TierKey, Card[]> {
   const out = Object.fromEntries(TIERS.map((t) => [t.key, [] as Card[]])) as Record<TierKey, Card[]>;
   for (const c of pool) out[c.tier].push(c);

@@ -121,6 +121,69 @@ body {
   }
 }
 
+/* 대결 화면: 카드가 자기 자리(--bx 오프셋)에서 가운데로 모여 붙는 연출 */
+@keyframes battle-approach {
+  from {
+    transform: translateX(var(--bx, 0)) scale(0.85);
+    opacity: 0;
+  }
+  70% {
+    transform: translateX(calc(var(--bx, 0) * 0.06)) scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* 충돌 순간의 섬광. 카드 대열 가운데에 얹는다 */
+@keyframes battle-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  35% {
+    opacity: 0.9;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+
+/* 승자 카드가 등급색으로 펄스하며 빛나는 연출 */
+@keyframes battle-win-glow {
+  0%,
+  100% {
+    filter: brightness(1) saturate(1);
+    transform: scale(1);
+  }
+  50% {
+    filter: brightness(1.5) saturate(1.3);
+    transform: scale(1.07);
+  }
+}
+
+/* 패자 카드가 금 가듯 밝아지다 색이 빠지며 흩어져 사라지는 연출 */
+@keyframes battle-lose-shatter {
+  0% {
+    opacity: 1;
+    filter: grayscale(0) brightness(1);
+    transform: scale(1) rotate(0deg);
+  }
+  35% {
+    filter: grayscale(0.3) brightness(1.4) contrast(1.3);
+    transform: scale(1.04) rotate(-2deg);
+  }
+  100% {
+    opacity: 0;
+    filter: grayscale(1) brightness(0.4);
+    transform: scale(0.7) rotate(6deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
