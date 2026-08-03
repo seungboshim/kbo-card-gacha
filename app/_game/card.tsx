@@ -97,7 +97,12 @@ export function PlayerCard({
             />
           )}
           {noPhoto ? (
-            <div className={`${photoH} flex items-center px-8 text-2xl font-black text-white/15`}>{card.name}</div>
+            // 사진 대신 사람 상반신 아바타 아이콘. alt 역할은 role="img"+aria-label로 대신하고 svg는 aria-hidden.
+            <div role="img" aria-label={card.name} className={`${photoH} aspect-square`}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-full w-full fill-white/15">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+              </svg>
+            </div>
           ) : (
             <Image
               src={card.photo}

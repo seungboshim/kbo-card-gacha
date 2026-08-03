@@ -26,7 +26,7 @@ const TEAM_COLOR: Record<string, string> = {
 
 export const KBO: SportConfig = {
   key: "kbo",
-  title: "KBO 카드팩 개봉전",
+  title: "KBO 카드깡",
   seasonLabel: String(SEASON),
   emblem: "⚾",
   packSub: `${SEASON} KBO`,

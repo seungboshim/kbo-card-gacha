@@ -31,7 +31,7 @@ export type Card = {
 /** 종목별로 game.tsx/card.tsx 에 필요한 표시 정보. */
 export type SportConfig = {
   key: "kbo" | "epl";
-  title: string; // 셋업 화면 제목. "KBO 카드팩 개봉전" | "프리미어리그 카드팩 개봉전"
+  title: string; // 종목명 + "카드깡". seasonLabel과 조립해 "2026 KBO 카드깡"처럼 쓴다.
   seasonLabel: string; // "2026" | "25/26"
   emblem: string; // "⚾" | "⚽"
   packSub: string; // 팩 워드마크 아래 작은 글자. "2026 KBO" | "25/26 EPL"

@@ -38,12 +38,12 @@ const TEAM_COLOR: Record<string, string> = {
 
 export const EPL: SportConfig = {
   key: "epl",
-  title: "프리미어리그 카드팩 개봉전",
+  title: "프리미어리그 카드깡",
   seasonLabel: "25/26",
   emblem: "⚽",
   packSub: "25/26 EPL",
   teamColor: TEAM_COLOR,
-  miniStatKeys: (role) => (role === "공격수" ? ["골", "지수"] : role === "미드필더" ? ["도움", "지수"] : ["클린시트", "지수"]),
+  miniStatKeys: (role) => (role === "공격수" ? ["골", "평점"] : role === "미드필더" ? ["도움", "평점"] : ["클린시트", "평점"]),
   guide: {
     pool: "25/26 시즌 기록 중 최소 출전을 넘긴 선수만 나와요. 골키퍼 600분, 그 외 포지션 900분.",
     tier: "포지션(골키퍼·수비수·미드필더·공격수) 안에서 활약도 순위로 갈라요. 그래서 수비형 골키퍼도 레전드가 될 수 있어요.",
@@ -51,6 +51,13 @@ export const EPL: SportConfig = {
 };
 
 type Row = Record<string, unknown>;
+
+// teamEmblemUrl은 선수마다 팀이 뒤섞여 온다(실측: 20팀 중 16팀이 팀당 파일명이 2~4종류로 섞여 있었다).
+// teamId는 팀당 하나이고 /teams 목록과도 일치해 이걸로 직접 조립한다. teamId는 숫자거나(대부분) 영문자
+// 문자열(번리 QqFyIw, 리즈 유나이티드 Sa0VaD, 선덜랜드 TTwjJb)이라 숫자로 파싱하지 않고 그대로 쓴다.
+function teamLogoOf(teamId: string): string {
+  return teamId ? `https://sports-phinf.pstatic.net/team/wfootball/default/${teamId}.png?type=f92_88` : "";
+}
 
 function num(x: unknown): number | null {
   return typeof x === "number" && Number.isFinite(x) ? x : null;
@@ -97,7 +104,7 @@ function headlineOf(row: Row, pos: Position): string {
 }
 
 function statsOf(row: Row, pos: Position, rating: number): { k: string; v: string }[] {
-  const idx = { k: "지수", v: rating.toFixed(1) };
+  const idx = { k: "평점", v: rating.toFixed(1) };
   switch (pos) {
     case "GK":
       return [
@@ -149,12 +156,13 @@ function statsOf(row: Row, pos: Position, rating: number): { k: string; v: strin
 function toCard(row: Row, pos: Position): Omit<Card, "tier"> {
   const rating = ratingOf(row, pos);
   const role = ROLE_LABEL[pos];
+  const teamId = String(row.teamId ?? "");
   return {
     id: String(row.playerId),
     name: String(row.playerName),
     team: String(row.teamName ?? ""),
-    teamId: String(row.teamId ?? ""),
-    teamLogo: String(row.teamEmblemUrl ?? ""),
+    teamId,
+    teamLogo: teamLogoOf(teamId),
     photo: String(row.image ?? ""),
     pos: role,
     back: row.backNumber ? `#${row.backNumber}` : "",

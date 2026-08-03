@@ -433,7 +433,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
         <div className="mx-auto flex min-h-[80vh] max-w-md flex-col items-center justify-center gap-8 text-center">
           <div>
             <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
-              {sport.emblem} {sport.title} <span className="text-zinc-500 tabular-nums">{sport.seasonLabel}</span>
+              <span className="text-zinc-500 tabular-nums">{sport.seasonLabel}</span> {sport.title}
             </h1>
             <p className="mt-2 text-sm text-zinc-400">
               {sport.seasonLabel} 시즌 실시간 기록으로 만든 카드팩을 열어 최고의 선수를 뽑아보세요
