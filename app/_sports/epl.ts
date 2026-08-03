@@ -103,8 +103,8 @@ function headlineOf(row: Row, pos: Position): string {
   return `${games}경기 · ${num(row.goals) ?? 0}골 ${num(row.assists) ?? 0}도움`;
 }
 
-function statsOf(row: Row, pos: Position, rating: number): { k: string; v: string }[] {
-  const idx = { k: "평점", v: rating.toFixed(1) };
+// 평점 칸은 역할군 전체를 알아야 정해지므로 여기서 넣지 않는다. toRatingScale이 마지막에 붙인다.
+function statsOf(row: Row, pos: Position): { k: string; v: string }[] {
   switch (pos) {
     case "GK":
       return [
@@ -115,7 +115,6 @@ function statsOf(row: Row, pos: Position, rating: number): { k: string; v: strin
         { k: "박스내세이브", v: int(row.insideBoxSaves) },
         { k: "출전분", v: int(row.minsPlayed) },
         { k: "경고", v: int(row.yellowCards) },
-        idx,
       ];
     case "DF":
       return [
@@ -126,7 +125,6 @@ function statsOf(row: Row, pos: Position, rating: number): { k: string; v: strin
         { k: "클리어", v: int(row.clearances) },
         { k: "골", v: int(row.goals) },
         { k: "도움", v: int(row.assists) },
-        idx,
       ];
     case "MF":
       return [
@@ -137,7 +135,6 @@ function statsOf(row: Row, pos: Position, rating: number): { k: string; v: strin
         { k: "xA", v: dec(row.expectedAssists) },
         { k: "태클", v: int(row.accurateTackles) },
         { k: "리커버리", v: int(row.recoveries) },
-        idx,
       ];
     case "FW":
       return [
@@ -148,7 +145,6 @@ function statsOf(row: Row, pos: Position, rating: number): { k: string; v: strin
         { k: "유효슛", v: int(row.shotsOnTarget) },
         { k: "xG", v: dec(row.expectedGoals) },
         { k: "키패스", v: int(row.keyPasses) },
-        idx,
       ];
   }
 }
@@ -169,7 +165,7 @@ function toCard(row: Row, pos: Position): Omit<Card, "tier"> {
     role,
     rating,
     headline: headlineOf(row, pos),
-    stats: statsOf(row, pos, rating),
+    stats: statsOf(row, pos),
   };
 }
 
@@ -188,6 +184,22 @@ export async function getEplPool(): Promise<Card[]> {
   return pool;
 }
 
+// 축구 평점은 10점 만점으로 읽힌다. ratingOf의 원점수는 역할마다 단위가 달라(골키퍼 2~22, 수비수 5~55)
+// 그대로 보여주면 평점처럼 안 읽힌다. 그래서 역할군 내 순위를 이 구간으로 옮긴다.
+// 순위를 보존하는 변환이라 등급 산정 결과는 바뀌지 않는다.
+const RATING_TOP = 9.5;
+const RATING_BOTTOM = 6.0;
+
+/** 역할군 내 순위를 평점 스케일로 옮기고, 스탯 마지막 칸에 평점을 붙인다. cards는 한 역할군이어야 한다. */
+function toRatingScale(cards: Omit<Card, "tier">[]): Omit<Card, "tier">[] {
+  const sorted = [...cards].sort((a, b) => b.rating - a.rating);
+  const last = sorted.length - 1;
+  return sorted.map((c, i) => {
+    const rating = last <= 0 ? RATING_TOP : RATING_TOP - (i / last) * (RATING_TOP - RATING_BOTTOM);
+    return { ...c, rating, stats: [...c.stats, { k: "평점", v: rating.toFixed(1) }] };
+  });
+}
+
 /** fetch와 분리한 순수 계산부. 테스트에서 네트워크 없이 가짜 row로 검증한다. */
 export function computeEplPool(rows: Row[]): Card[] {
   const byPos: Record<Position, Omit<Card, "tier">[]> = { GK: [], DF: [], MF: [], FW: [] };
@@ -198,5 +210,6 @@ export function computeEplPool(rows: Row[]): Card[] {
     if ((num(row.minsPlayed) ?? 0) < MIN_MINS[pos]) continue;
     byPos[pos].push(toCard(row, pos));
   }
-  return [...assignTiers(byPos.GK), ...assignTiers(byPos.DF), ...assignTiers(byPos.MF), ...assignTiers(byPos.FW)];
+  const positions: Position[] = ["GK", "DF", "MF", "FW"];
+  return positions.flatMap((p) => assignTiers(toRatingScale(byPos[p])));
 }

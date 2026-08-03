@@ -304,7 +304,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
   function renderStacks(order: number[]) {
     return (
       <div
-        className="grid grid-cols-2 items-start gap-4 sm:grid-cols-[repeat(var(--stack-cols),minmax(0,1fr))]"
+        className="grid grid-cols-2 items-start gap-3 sm:grid-cols-[repeat(var(--stack-cols),minmax(0,1fr))] sm:gap-4"
         style={{ "--stack-cols": numPlayers } as CSSProperties}
       >
         {order.map((p) => {
@@ -313,30 +313,31 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
           return (
             <div key={p} className="flex w-full flex-col items-center">
               {/* 이름/점수가 스택 카드 위에 항상 보이게: 배경 불투명 + z-index를 카드보다 높게 */}
-              <div className="relative z-20 mb-2 w-full bg-zinc-950 py-1 text-center">
+              <div className="relative z-20 mb-1 w-full bg-zinc-950 py-0.5 text-center sm:mb-2 sm:py-1">
                 <div className={`text-sm font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</div>
                 <div className="text-lg font-black tabular-nums">{score}</div>
               </div>
               <div
-                className="relative w-full max-w-[170px] [--stack-card-h:148px] [--stack-step:8px] sm:[--stack-card-h:340px] sm:[--stack-step:28px]"
+                className="relative w-full max-w-[170px] [--stack-card-h:148px] [--stack-step:17px] sm:[--stack-card-h:340px] sm:[--stack-step:28px]"
                 style={{ height: `calc(var(--stack-step) * ${packSize - 1} + var(--stack-card-h))` }}
               >
                 {stack.map((card, i) => {
                   // 호버는 아주 약한 CSS 피드백만(hover:*), z-index는 절대 안 건드린다.
                   const hoverCls =
                     "transition duration-200 ease-out hover:-translate-y-[3px] hover:scale-[1.01] hover:brightness-105";
-                  const flipCls = i === stack.length - 1 ? "animate-[flip-up_.5s_cubic-bezier(.2,.8,.2,1)_both]" : "";
+                  const isFront = i === stack.length - 1;
+                  const flipCls = isFront ? "animate-[flip-up_.5s_cubic-bezier(.2,.8,.2,1)_both]" : "";
                   return (
                     <div
                       key={card.id}
                       className="absolute inset-x-0 transition-[top] duration-300 ease-out"
                       style={{ top: `calc(var(--stack-step) * ${i})`, zIndex: i }}
                     >
-                      {/* sm 미만: mini 카드, 누르면 바로 확대 모달 */}
+                      {/* sm 미만: mini 카드. 뒤 카드는 넓은 화면과 같이 맨 앞으로, 맨 앞 카드만 확대 모달 */}
                       <button
                         type="button"
-                        aria-label={`${card.name} 자세히 보기`}
-                        onClick={() => setOverlayCard(card)}
+                        aria-label={isFront ? `${card.name} 자세히 보기` : `${card.name} 맨 앞으로`}
+                        onClick={() => (isFront ? setOverlayCard(card) : bringToFront(p, card.id))}
                         className={`block w-full text-left outline-none sm:hidden ${hoverCls} ${flipCls}`}
                       >
                         <PlayerCard card={card} sport={sport} size="mini" />
@@ -582,7 +583,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
           )}
 
           {/* 턴 안내를 화면 맨 위로 */}
-          <p className={`mb-3 text-center text-sm font-bold ${PLAYERS[turn].text}`}>
+          <p className={`mb-2 text-center text-sm font-bold sm:mb-3 ${PLAYERS[turn].text}`}>
             {PLAYERS[turn].name} 차례 — 카드를 뒤집어주세요
           </p>
 

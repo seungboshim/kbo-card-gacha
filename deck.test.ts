@@ -122,6 +122,32 @@ test("EPL: 포지션별 rating 순서가 의도대로 나온다", () => {
   assert.equal(byRole("공격수")[0].name, "F1");
 });
 
+test("EPL: 평점이 10점 만점 스케일(6.0~9.5)로 나온다", () => {
+  const rows = Array.from({ length: 10 }, (_, i) => ({
+    playerId: `f${i}`,
+    playerName: `F${i}`,
+    position: "FW",
+    minsPlayed: 1000,
+    goals: 30 - i * 3, // 원점수는 30 → 3
+  }));
+  const pool = computeEplPool(rows);
+  const shown = pool.map((c) => Number(c.stats.at(-1)!.v));
+  assert.equal(pool[0].stats.at(-1)!.k, "평점");
+  assert.equal(shown[0], 9.5); // 1위
+  assert.equal(shown.at(-1), 6.0); // 최하위
+  assert.ok(
+    shown.every((v) => v >= 6.0 && v <= 9.5),
+    `평점이 구간을 벗어났다: ${shown.join(", ")}`,
+  );
+  // 표시 평점과 등급 산정에 쓰는 rating 이 어긋나면 카드와 등급이 따로 논다
+  assert.deepEqual(
+    pool.map((c) => Number(c.rating.toFixed(1))),
+    shown,
+  );
+  // 원점수 순서가 그대로 보존돼야 등급이 안 바뀐다
+  assert.deepEqual([...shown].sort((a, b) => b - a), shown);
+});
+
 test("EPL: 최소 출전 필터가 GK 600 / 나머지 900으로 갈린다", () => {
   const rows = [
     { playerId: "g-in", playerName: "GIn", position: "GK", minsPlayed: 600, cleanSheets: 1 },
