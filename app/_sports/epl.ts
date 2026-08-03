@@ -43,10 +43,11 @@ export const EPL: SportConfig = {
   emblem: "⚽",
   packSub: "25/26 EPL",
   teamColor: TEAM_COLOR,
-  miniStatKeys: (role) => (role === "공격수" ? ["골", "평점"] : role === "미드필더" ? ["도움", "평점"] : ["클린시트", "평점"]),
+  miniStatKeys: (role) =>
+    role === "공격수" ? ["골", "도움"] : role === "미드필더" ? ["도움", "키패스"] : role === "수비수" ? ["클린시트", "태클"] : ["클린시트", "세이브"],
   guide: {
     pool: "25/26 시즌 기록 중 최소 출전을 넘긴 선수만 나와요. 골키퍼 600분, 그 외 포지션 900분.",
-    tier: "포지션(골키퍼·수비수·미드필더·공격수) 안에서 활약도 순위로 갈라요. 그래서 수비형 골키퍼도 레전드가 될 수 있어요.",
+    tier: "포지션(골키퍼·수비수·미드필더·공격수) 안에서 활약도 순위로 갈라요. 그래서 골키퍼도 레전드가 될 수 있어요. 활약도는 골·도움·클린시트·태클 같은 기록으로 계산해요(공식 평점이 아니에요).",
   },
 };
 
@@ -75,13 +76,21 @@ function dec(x: unknown, n = 1): string {
   return v === null ? "-" : v.toFixed(n);
 }
 
-/** 포지션별 활약도. 역할군 내 백분위에만 쓰이므로 단위가 달라도 된다. 누적 지표(90분당 X — 소표본에서 무너진다). */
+/**
+ * 포지션별 활약도. 등급을 가르는 역할군 내 순위에만 쓰이고 화면에는 안 나온다.
+ * 그래서 역할마다 단위가 달라도 되고, 누적 지표를 쓴다(90분당으로 하면 소표본에서 무너진다).
+ *
+ * 한계: Naver 는 선수 평점을 주지 않아(indexScore 가 500명 전부 빈다) 클래식 스탯으로 근사한다.
+ * 태클·인터셉트 같은 카운트는 팀 전술에 좌우돼서, 위치 선정이나 전진 패스로 기여하는 선수를
+ * 제대로 잡지 못한다. 진짜 평점을 붙이려면 유료 API 가 필요하다.
+ */
 function ratingOf(row: Row, pos: Position): number {
   const cs = num(row.cleanSheets) ?? 0;
   const saves = num(row.saves) ?? 0;
   const tackles = num(row.accurateTackles) ?? 0;
   const inter = num(row.interceptions) ?? 0;
   const clear = num(row.clearances) ?? 0;
+  const recov = num(row.recoveries) ?? 0;
   const goals = num(row.goals) ?? 0;
   const assists = num(row.assists) ?? 0;
   const kp = num(row.keyPasses) ?? 0;
@@ -91,10 +100,29 @@ function ratingOf(row: Row, pos: Position): number {
     case "DF":
       return 1.5 * cs + 0.1 * (tackles + inter + clear) + goals + assists;
     case "MF":
-      return goals + assists + 0.15 * kp;
+      // 공격 포인트만 보면 수비형 미드필더가 통째로 밀린다(데클란 라이스가 82명 중 10위였다).
+      // 볼 회수 기여를 더해 6위까지 올린다.
+      return goals + assists + 0.15 * kp + 0.08 * (tackles + inter + recov);
     case "FW":
       return goals + 0.7 * assists;
   }
+}
+
+// 골키퍼 선방률(%). 세이브와 실점만 있어 유효슛 대비로 근사한다. 둘 다 0이면 표시할 게 없다.
+function saveRate(row: Row): string {
+  const saves = num(row.saves) ?? 0;
+  const conceded = num(row.goalsConceded) ?? 0;
+  const faced = saves + conceded;
+  return faced > 0 ? `${((saves / faced) * 100).toFixed(0)}%` : "-";
+}
+
+// 기대 득점 대비 실제 득점. 양수면 기대보다 더 넣었다는 뜻.
+function goalsOverXg(row: Row): string {
+  const g = num(row.goals);
+  const xg = num(row.expectedGoals);
+  if (g === null || xg === null) return "-";
+  const diff = g - xg;
+  return `${diff >= 0 ? "+" : ""}${diff.toFixed(1)}`;
 }
 
 function headlineOf(row: Row, pos: Position): string {
@@ -103,7 +131,8 @@ function headlineOf(row: Row, pos: Position): string {
   return `${games}경기 · ${num(row.goals) ?? 0}골 ${num(row.assists) ?? 0}도움`;
 }
 
-// 평점 칸은 역할군 전체를 알아야 정해지므로 여기서 넣지 않는다. toRatingScale이 마지막에 붙인다.
+// 8칸 전부 실제 기록이다. 활약도(rating)는 등급으로만 드러내고 숫자로는 안 보여준다.
+// 우리가 합성한 값이라 "평점"처럼 읽히면 실제 평점으로 오해된다.
 function statsOf(row: Row, pos: Position): { k: string; v: string }[] {
   switch (pos) {
     case "GK":
@@ -112,6 +141,7 @@ function statsOf(row: Row, pos: Position): { k: string; v: string }[] {
         { k: "클린시트", v: int(row.cleanSheets) },
         { k: "세이브", v: int(row.saves) },
         { k: "실점", v: int(row.goalsConceded) },
+        { k: "선방률", v: saveRate(row) },
         { k: "박스내세이브", v: int(row.insideBoxSaves) },
         { k: "출전분", v: int(row.minsPlayed) },
         { k: "경고", v: int(row.yellowCards) },
@@ -123,6 +153,7 @@ function statsOf(row: Row, pos: Position): { k: string; v: string }[] {
         { k: "태클", v: int(row.accurateTackles) },
         { k: "인터셉트", v: int(row.interceptions) },
         { k: "클리어", v: int(row.clearances) },
+        { k: "리커버리", v: int(row.recoveries) },
         { k: "골", v: int(row.goals) },
         { k: "도움", v: int(row.assists) },
       ];
@@ -134,6 +165,7 @@ function statsOf(row: Row, pos: Position): { k: string; v: string }[] {
         { k: "키패스", v: int(row.keyPasses) },
         { k: "xA", v: dec(row.expectedAssists) },
         { k: "태클", v: int(row.accurateTackles) },
+        { k: "인터셉트", v: int(row.interceptions) },
         { k: "리커버리", v: int(row.recoveries) },
       ];
     case "FW":
@@ -144,6 +176,7 @@ function statsOf(row: Row, pos: Position): { k: string; v: string }[] {
         { k: "슛", v: int(row.shots) },
         { k: "유효슛", v: int(row.shotsOnTarget) },
         { k: "xG", v: dec(row.expectedGoals) },
+        { k: "xG차", v: goalsOverXg(row) },
         { k: "키패스", v: int(row.keyPasses) },
       ];
   }
@@ -184,22 +217,6 @@ export async function getEplPool(): Promise<Card[]> {
   return pool;
 }
 
-// 축구 평점은 10점 만점으로 읽힌다. ratingOf의 원점수는 역할마다 단위가 달라(골키퍼 2~22, 수비수 5~55)
-// 그대로 보여주면 평점처럼 안 읽힌다. 그래서 역할군 내 순위를 이 구간으로 옮긴다.
-// 순위를 보존하는 변환이라 등급 산정 결과는 바뀌지 않는다.
-const RATING_TOP = 9.5;
-const RATING_BOTTOM = 6.0;
-
-/** 역할군 내 순위를 평점 스케일로 옮기고, 스탯 마지막 칸에 평점을 붙인다. cards는 한 역할군이어야 한다. */
-function toRatingScale(cards: Omit<Card, "tier">[]): Omit<Card, "tier">[] {
-  const sorted = [...cards].sort((a, b) => b.rating - a.rating);
-  const last = sorted.length - 1;
-  return sorted.map((c, i) => {
-    const rating = last <= 0 ? RATING_TOP : RATING_TOP - (i / last) * (RATING_TOP - RATING_BOTTOM);
-    return { ...c, rating, stats: [...c.stats, { k: "평점", v: rating.toFixed(1) }] };
-  });
-}
-
 /** fetch와 분리한 순수 계산부. 테스트에서 네트워크 없이 가짜 row로 검증한다. */
 export function computeEplPool(rows: Row[]): Card[] {
   const byPos: Record<Position, Omit<Card, "tier">[]> = { GK: [], DF: [], MF: [], FW: [] };
@@ -211,5 +228,5 @@ export function computeEplPool(rows: Row[]): Card[] {
     byPos[pos].push(toCard(row, pos));
   }
   const positions: Position[] = ["GK", "DF", "MF", "FW"];
-  return positions.flatMap((p) => assignTiers(toRatingScale(byPos[p])));
+  return positions.flatMap((p) => assignTiers(byPos[p]));
 }

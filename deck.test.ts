@@ -122,30 +122,35 @@ test("EPL: 포지션별 rating 순서가 의도대로 나온다", () => {
   assert.equal(byRole("공격수")[0].name, "F1");
 });
 
-test("EPL: 평점이 10점 만점 스케일(6.0~9.5)로 나온다", () => {
-  const rows = Array.from({ length: 10 }, (_, i) => ({
-    playerId: `f${i}`,
-    playerName: `F${i}`,
-    position: "FW",
-    minsPlayed: 1000,
-    goals: 30 - i * 3, // 원점수는 30 → 3
-  }));
+test("EPL: 미드필더 활약도에 볼 회수 기여가 들어간다", () => {
+  const base = { position: "MF", minsPlayed: 1000 };
+  const rows = [
+    // 공격 포인트만 보면 공격형이 앞서지만, 수비 기여를 더하면 수비형이 앞선다
+    { ...base, playerId: "att", playerName: "공격형", goals: 4, assists: 5, keyPasses: 58, accurateTackles: 2, interceptions: 2, recoveries: 20 },
+    { ...base, playerId: "def", playerName: "수비형", goals: 4, assists: 5, keyPasses: 58, accurateTackles: 35, interceptions: 37, recoveries: 180 },
+  ];
   const pool = computeEplPool(rows);
-  const shown = pool.map((c) => Number(c.stats.at(-1)!.v));
-  assert.equal(pool[0].stats.at(-1)!.k, "평점");
-  assert.equal(shown[0], 9.5); // 1위
-  assert.equal(shown.at(-1), 6.0); // 최하위
-  assert.ok(
-    shown.every((v) => v >= 6.0 && v <= 9.5),
-    `평점이 구간을 벗어났다: ${shown.join(", ")}`,
-  );
-  // 표시 평점과 등급 산정에 쓰는 rating 이 어긋나면 카드와 등급이 따로 논다
-  assert.deepEqual(
-    pool.map((c) => Number(c.rating.toFixed(1))),
-    shown,
-  );
-  // 원점수 순서가 그대로 보존돼야 등급이 안 바뀐다
-  assert.deepEqual([...shown].sort((a, b) => b - a), shown);
+  assert.equal(pool[0].name, "수비형");
+  assert.ok(pool[0].rating > pool[1].rating);
+});
+
+test("EPL: 스탯 8칸이 모두 실제 기록이고 평점 칸이 없다", () => {
+  const rows = [
+    { playerId: "f1", playerName: "F1", position: "FW", minsPlayed: 1000, goals: 27, expectedGoals: 25.4, assists: 8 },
+    { playerId: "g1", playerName: "G1", position: "GK", minsPlayed: 700, cleanSheets: 5, saves: 90, goalsConceded: 30 },
+  ];
+  const pool = computeEplPool(rows);
+  for (const c of pool) {
+    assert.equal(c.stats.length, 8);
+    assert.ok(
+      !c.stats.some((s) => s.k === "평점" || s.k === "지수"),
+      `합성 활약도가 스탯 칸에 노출됐다: ${c.stats.map((s) => s.k).join(", ")}`,
+    );
+  }
+  const fw = pool.find((c) => c.role === "공격수")!;
+  assert.equal(fw.stats.find((s) => s.k === "xG차")!.v, "+1.6"); // 27골 - xG 25.4
+  const gk = pool.find((c) => c.role === "골키퍼")!;
+  assert.equal(gk.stats.find((s) => s.k === "선방률")!.v, "75%"); // 90 / (90+30)
 });
 
 test("EPL: 최소 출전 필터가 GK 600 / 나머지 900으로 갈린다", () => {
