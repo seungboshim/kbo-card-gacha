@@ -85,10 +85,18 @@ export function stalemateLimit(decks: Card[][]): number {
 
 export type BattleEnd = { finished: boolean; champions: number[]; stalemate: boolean };
 
-/** 끝났는지 판정한다. quietRounds는 파괴가 0이었던 판이 연속 몇 번인지. */
+/**
+ * 끝났는지 판정한다. quietRounds는 파괴가 0이었던 판이 연속 몇 번인지.
+ *
+ * 교착(등급이 다 같아 아무도 안 죽는 상태)으로 끝나면 남은 사람 전원이 아니라
+ * 카드를 가장 많이 남긴 사람이 우승한다. 동수면 그 사람들이 공동 우승이다.
+ */
 export function battleEnd(decks: Card[][], quietRounds: number, limit: number): BattleEnd {
-  const champions = survivorsOf(decks);
-  if (champions.length <= 1) return { finished: true, champions, stalemate: false };
-  if (quietRounds >= limit) return { finished: true, champions, stalemate: true };
+  const alive = survivorsOf(decks);
+  if (alive.length <= 1) return { finished: true, champions: alive, stalemate: false };
+  if (quietRounds >= limit) {
+    const most = Math.max(...alive.map((p) => decks[p].length));
+    return { finished: true, champions: alive.filter((p) => decks[p].length === most), stalemate: true };
+  }
   return { finished: false, champions: [], stalemate: false };
 }

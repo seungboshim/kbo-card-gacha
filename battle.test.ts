@@ -92,12 +92,33 @@ test("한 명만 카드가 남으면 그 사람 우승", () => {
   assert.deepEqual(end, { finished: true, champions: [0], stalemate: false });
 });
 
-test("파괴 없는 판이 한 바퀴 이어지면 교착으로 공동 우승", () => {
+test("파괴 없는 판이 한 바퀴 이어져야 교착으로 끝난다", () => {
   const decks = [deck("EPIC"), deck("EPIC")];
   const limit = stalemateLimit(decks);
   assert.equal(limit, 1);
   assert.deepEqual(battleEnd(decks, 0, limit), { finished: false, champions: [], stalemate: false });
+  // 1장씩 동수라 둘 다 우승
   assert.deepEqual(battleEnd(decks, 1, limit), { finished: true, champions: [0, 1], stalemate: true });
+});
+
+test("교착이면 카드를 가장 많이 남긴 사람이 우승", () => {
+  // 2 / 1 / 1 장 → 2장인 0번 혼자 우승
+  const decks = [deck("EPIC", "EPIC"), deck("EPIC"), deck("EPIC")];
+  const end = battleEnd(decks, stalemateLimit(decks), stalemateLimit(decks));
+  assert.deepEqual(end, { finished: true, champions: [0], stalemate: true });
+});
+
+test("교착에서 최다 보유가 동수면 그 사람들 공동 우승", () => {
+  // 2 / 2 / 1 장 → 2장인 0번과 1번 공동 우승
+  const decks = [deck("EPIC", "EPIC"), deck("RARE", "RARE"), deck("EPIC")];
+  const end = battleEnd(decks, stalemateLimit(decks), stalemateLimit(decks));
+  assert.deepEqual(end, { finished: true, champions: [0, 1], stalemate: true });
+});
+
+test("교착 우승 판정은 탈락자(0장)를 세지 않는다", () => {
+  const decks = [[], deck("EPIC", "EPIC"), deck("EPIC")];
+  const end = battleEnd(decks, stalemateLimit(decks), stalemateLimit(decks));
+  assert.deepEqual(end, { finished: true, champions: [1], stalemate: true });
 });
 
 test("전원 같은 등급이면 덱이 줄지 않는다 (교착 조건이 필요한 이유)", () => {

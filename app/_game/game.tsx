@@ -170,6 +170,25 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
     };
   }, [battleAnim]);
 
+  // 자동 진행: 판정/정리가 끝나(battleAnim이 비고) 아직 안 끝났으면 다음 판을 예약한다.
+  // 500ms는 새 카드가 등장하는 연출(card-in)을 볼 시간이고, 이후 클래시·판정(1900ms)까지 더하면
+  // 한 판이 총 2.4초 정도로 흐른다. phase가 battle을 벗어나면(결과로 돌아가기 등) cleanup에서 예약을 지운다.
+  // 안전장치: 판수가 비정상적으로 커지면 battleEnd에 limit 0을 줘 그 자리에서 강제로 끝낸다.
+  useEffect(() => {
+    if (phase !== "battle" || battleAnim || battleFinish) return;
+    const t = setTimeout(() => {
+      if (battleRound >= 200) {
+        setBattleFinish(battleEnd(battleDecks, quietRounds, 0));
+        return;
+      }
+      playRound();
+    }, 500);
+    return () => clearTimeout(t);
+    // playRound는 매 렌더마다 새로 만들어져서 deps에 넣으면 대결과 무관한 리렌더에도
+    // 타이머가 리셋된다. 실제로 쓰는 값은 이미 다 deps에 있다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, battleAnim, battleFinish, battleRound, battleDecks, quietRounds]);
+
   function startGame() {
     // 팩끼리도 중복 금지: 한 팩을 뽑을 때마다 그 카드들을 풀에서 빼고 다음 팩을 뽑는다.
     const packs: Card[][] = [];
@@ -506,7 +525,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
   }
 
   // 대결 화면. 판정 전/후 대기(battleAnim 없음)와 진행 중(battleAnim 있음)을 같은 자리에 그린다.
-  // 카드 얼굴은 renderStacks와 별개로 PlayerCard(mini)를 바로 나열한다.
+  // 카드 크기는 renderStacks와 같은 규칙(sm 미만 mini, sm 이상 compact)을 그대로 따른다.
   function renderBattle() {
     const finalUp = !battleAnim && !battleFinish && battleRound > 0 && isFinalRound(battleDecks);
     return (
@@ -533,8 +552,12 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
           <div className="flex flex-1 flex-col items-center justify-center gap-5 text-center">
             <p aria-live="polite" className="text-2xl font-black">
               {battleFinish.stalemate
-                ? "무승부 — 공동 우승"
-                : `${battleFinish.champions.map((p) => PLAYERS[p].name).join(", ")} 우승!`}
+                ? `${battleFinish.champions.map((p) => PLAYERS[p].name).join(", ")} 카드를 가장 많이 남겨 ${
+                    battleFinish.champions.length > 1 ? "공동 우승" : "우승"
+                  }!`
+                : `${battleFinish.champions.map((p) => PLAYERS[p].name).join(", ")} ${
+                    battleFinish.champions.length > 1 ? "공동 우승" : "우승"
+                  }!`}
             </p>
             <div className="flex flex-wrap justify-center gap-6">
               {battleFinish.champions.map((p) => (
@@ -580,14 +603,23 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                 {battleAnim && battleStage === "judge" ? roundSummary(battleAnim.result, battleAnim.final) : ""}
               </p>
 
-              <div className="relative grid grid-cols-2 items-end justify-items-center gap-3 sm:flex sm:flex-nowrap sm:justify-center sm:gap-6">
+              <div
+                className="relative grid grid-cols-2 items-end justify-items-center gap-3 sm:grid-cols-[repeat(var(--stack-cols),minmax(0,1fr))] sm:gap-6"
+                style={{ "--stack-cols": numPlayers } as CSSProperties}
+              >
                 {!battleAnim
                   ? survivorsOf(battleDecks).map((p) => {
                       const card = frontOf(battleDecks[p])!;
                       return (
-                        <div key={p} className="flex w-full max-w-[150px] flex-col items-center gap-1 sm:w-32 sm:max-w-none">
+                        <div key={p} className="flex w-full max-w-[170px] flex-col items-center gap-1">
                           <span className={`text-xs font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</span>
-                          <PlayerCard key={card.id} card={card} sport={sport} size="mini" />
+                          {/* renderStacks와 같은 규칙: sm 미만 mini, sm 이상 compact */}
+                          <div className="w-full sm:hidden">
+                            <PlayerCard key={card.id} card={card} sport={sport} size="mini" />
+                          </div>
+                          <div className="hidden w-full sm:block">
+                            <PlayerCard key={card.id} card={card} sport={sport} size="compact" />
+                          </div>
                         </div>
                       );
                     })
@@ -604,12 +636,18 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                               : "animate-[battle-lose-shatter_.7s_ease-in_forwards]"
                             : "";
                       return (
-                        <div key={entry.player} className="flex w-full max-w-[150px] flex-col items-center gap-1 sm:w-32 sm:max-w-none">
+                        <div key={entry.player} className="flex w-full max-w-[170px] flex-col items-center gap-1">
                           <span className={`text-xs font-bold ${PLAYERS[entry.player].text}`}>
                             {PLAYERS[entry.player].name}
                           </span>
-                          <div className={faceClass} style={{ "--bx": `${bx}px` } as CSSProperties}>
+                          <div className={`w-full sm:hidden ${faceClass}`} style={{ "--bx": `${bx}px` } as CSSProperties}>
                             <PlayerCard card={entry.card} sport={sport} size="mini" />
+                          </div>
+                          <div
+                            className={`hidden w-full sm:block ${faceClass}`}
+                            style={{ "--bx": `${bx}px` } as CSSProperties}
+                          >
+                            <PlayerCard card={entry.card} sport={sport} size="compact" />
                           </div>
                           {judge && (
                             <span
@@ -636,20 +674,19 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
               </div>
             </div>
 
-            <div className="flex flex-col items-center gap-2">
-              <p className="text-sm text-zinc-500 tabular-nums">
-                {battleRound === 0 ? "대결 준비" : `${battleRound}판`}
-                {finalUp && " · 다음이 마지막 승부"}
-              </p>
-              <button
-                type="button"
-                onClick={playRound}
-                disabled={!!battleAnim}
-                className="rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-6 py-2.5 font-bold text-zinc-950 transition hover:brightness-110 active:scale-[.98] disabled:opacity-50"
-              >
-                {battleRound === 0 ? "대결 시작" : "다음 판"}
-              </button>
-            </div>
+            <p className="self-center text-sm text-zinc-500 tabular-nums">
+              {battleRound === 0 ? "대결 준비" : `${battleRound}판`}
+              {finalUp && " · 다음이 마지막 승부"}
+            </p>
+
+            {/* 자동 진행이라 이 버튼이 없으면 끝날 때까지 화면에 갇힌다. 나가면 예약된 타이머도 정리된다. */}
+            <button
+              type="button"
+              onClick={() => setPhase("result")}
+              className="self-center rounded-xl bg-white/10 px-4 py-1.5 text-sm font-bold text-zinc-300 ring-1 ring-white/15 transition hover:bg-white/20 active:scale-[.97]"
+            >
+              그만두고 결과로
+            </button>
           </>
         )}
       </div>
