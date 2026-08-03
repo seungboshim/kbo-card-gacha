@@ -1,4 +1,4 @@
-// node --test kbo.test.ts
+// node --test deck.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -8,13 +8,13 @@ import {
   groupByTier,
   tierRankOf,
   assignTiers,
-  parseInnings,
   type Card,
-  type Role,
   type TierKey,
-} from "./app/kbo.ts";
+} from "./app/_game/deck.ts";
+import { parseInnings } from "./app/_sports/kbo.ts";
+import { computeEplPool } from "./app/_sports/epl.ts";
 
-const card = (id: string, war: number, tier: TierKey = "COMMON", role: Role = "타자"): Card => ({
+const card = (id: string, rating: number, tier: TierKey = "COMMON", role = "타자"): Card => ({
   id,
   name: id,
   team: "",
@@ -24,7 +24,7 @@ const card = (id: string, war: number, tier: TierKey = "COMMON", role: Role = "�
   pos: "",
   back: "",
   role,
-  war,
+  rating,
   tier,
   headline: "",
   stats: [],
@@ -101,4 +101,41 @@ test("drawPack: 풀이 n보다 작으면 있는 만큼만 반환한다", () => {
   const pack = drawPack(byTier, 10);
   assert.equal(pack.length, 5);
   assert.equal(new Set(pack.map((c) => c.id)).size, 5);
+});
+
+test("EPL: 포지션별 rating 순서가 의도대로 나온다", () => {
+  const rows = [
+    { playerId: "g1", playerName: "G1", position: "GK", minsPlayed: 700, cleanSheets: 19, saves: 0 },
+    { playerId: "g2", playerName: "G2", position: "GK", minsPlayed: 700, cleanSheets: 10, saves: 100 },
+    { playerId: "d1", playerName: "D1", position: "DF", minsPlayed: 1000, cleanSheets: 17, goals: 3, assists: 4 },
+    { playerId: "d2", playerName: "D2", position: "DF", minsPlayed: 1000, cleanSheets: 10, goals: 0, assists: 5 },
+    { playerId: "m1", playerName: "M1", position: "MF", minsPlayed: 1000, goals: 9, assists: 21, keyPasses: 0 },
+    { playerId: "m2", playerName: "M2", position: "MF", minsPlayed: 1000, goals: 15, assists: 4, keyPasses: 0 },
+    { playerId: "f1", playerName: "F1", position: "FW", minsPlayed: 1000, goals: 27, assists: 8 },
+    { playerId: "f2", playerName: "F2", position: "FW", minsPlayed: 1000, goals: 22, assists: 1 },
+  ];
+  const pool = computeEplPool(rows);
+  const byRole = (role: string) => pool.filter((c) => c.role === role);
+  assert.equal(byRole("골키퍼")[0].name, "G1"); // 클린시트 19가 세이브 100보다 앞선다
+  assert.equal(byRole("수비수")[0].name, "D1");
+  assert.equal(byRole("미드필더")[0].name, "M1");
+  assert.equal(byRole("공격수")[0].name, "F1");
+});
+
+test("EPL: 최소 출전 필터가 GK 600 / 나머지 900으로 갈린다", () => {
+  const rows = [
+    { playerId: "g-in", playerName: "GIn", position: "GK", minsPlayed: 600, cleanSheets: 1 },
+    { playerId: "g-out", playerName: "GOut", position: "GK", minsPlayed: 599, cleanSheets: 1 },
+    { playerId: "d-in", playerName: "DIn", position: "DF", minsPlayed: 900, cleanSheets: 1 },
+    { playerId: "d-out", playerName: "DOut", position: "DF", minsPlayed: 899, cleanSheets: 1 },
+    { playerId: "m-in", playerName: "MIn", position: "MF", minsPlayed: 900, goals: 1 },
+    { playerId: "m-out", playerName: "MOut", position: "MF", minsPlayed: 899, goals: 1 },
+    { playerId: "f-in", playerName: "FIn", position: "FW", minsPlayed: 900, goals: 1 },
+    { playerId: "f-out", playerName: "FOut", position: "FW", minsPlayed: 899, goals: 1 },
+  ];
+  const ids = new Set(computeEplPool(rows).map((c) => c.id));
+  assert.ok(ids.has("g-in") && !ids.has("g-out"));
+  assert.ok(ids.has("d-in") && !ids.has("d-out"));
+  assert.ok(ids.has("m-in") && !ids.has("m-out"));
+  assert.ok(ids.has("f-in") && !ids.has("f-out"));
 });

@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "KBO 카드깡 2026",
-  description: "2026 KBO 선수 카드를 뽑고 올해 성적을 확인해요",
+  title: "카드깡 — KBO · 프리미어리그",
+  description: "KBO, 프리미어리그 선수 카드를 뽑고 올 시즌 성적을 확인해요",
 };
 
 export default function RootLayout({

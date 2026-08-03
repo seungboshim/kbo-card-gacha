@@ -1,26 +1,33 @@
-import Game from "./game";
-import { getPool, type Card } from "./kbo";
+import Link from "next/link";
+import { KBO } from "./_sports/kbo";
+import { EPL } from "./_sports/epl";
 
-export const revalidate = 3600;
+// 종목별 짧은 표시 이름. SportConfig.title은 "KBO 카드팩 개봉전"처럼 문장형이라 여기 입구에선 안 쓴다.
+const NAME: Record<string, string> = { kbo: "KBO", epl: "프리미어리그" };
 
-export default async function Page() {
-  let pool: Card[] = [];
-  let error = "";
-  try {
-    pool = await getPool();
-  } catch (e) {
-    error = e instanceof Error ? e.message : String(e);
-  }
+const SPORTS = [KBO, EPL];
 
-  if (error) {
-    return (
-      <main className="mx-auto max-w-lg px-4 py-20 text-center">
-        <h1 className="text-xl font-bold">기록을 못 가져왔어요</h1>
-        <p className="mt-2 text-sm text-zinc-400">{error}</p>
-        <p className="mt-1 text-xs text-zinc-600">잠시 뒤에 새로고침해보세요.</p>
-      </main>
-    );
-  }
+export default function Home() {
+  return (
+    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col items-center justify-center gap-10 px-4 py-10 text-center">
+      <div>
+        <h1 className="text-2xl font-black tracking-tight sm:text-3xl">카드깡</h1>
+        <p className="mt-2 text-sm text-zinc-400">종목을 골라 카드팩을 열어보세요</p>
+      </div>
 
-  return <Game pool={pool} />;
+      <div className="grid w-full gap-4 sm:grid-cols-2">
+        {SPORTS.map((s) => (
+          <Link
+            key={s.key}
+            href={`/${s.key}`}
+            className="flex flex-col items-center gap-3 rounded-2xl bg-white/5 px-6 py-10 ring-1 ring-white/10 transition hover:scale-[1.02] hover:bg-white/10 active:scale-[.98]"
+          >
+            <span className="text-5xl">{s.emblem}</span>
+            <span className="text-lg font-bold">{NAME[s.key]}</span>
+            <span className="text-sm text-zinc-500 tabular-nums">{s.seasonLabel}</span>
+          </Link>
+        ))}
+      </div>
+    </main>
+  );
 }

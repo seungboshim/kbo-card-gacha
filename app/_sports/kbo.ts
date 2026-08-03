@@ -2,97 +2,41 @@
 // KBO 공식 사이트는 ASP.NET 포스트백이라 규정타석/규정이닝 상위 30명만 GET으로 긁힌다.
 // ponytail: Naver 쪽이 타자 329명 + 투수 277명을 WAR/wRC+ 포함해서 JSON으로 주므로 스크래핑 안 함.
 
+import { assignTiers, type Card, type SportConfig } from "../_game/deck.ts";
+
 const BASE = "https://api-gw.sports.naver.com/statistics/categories/kbo/seasons";
 
-export const SEASON = 2026;
+const SEASON = 2026;
 
-export type Role = "타자" | "선발" | "불펜";
-export type TierKey = "LEGEND" | "EPIC" | "RARE" | "UNCOMMON" | "COMMON";
+type Role = "타자" | "선발" | "불펜";
 
-/** 역할군 내 상위 누적 비율(pct)까지 해당 등급. rate는 뽑기 확률(%, 합계 100), score는 게임 점수. */
-export const TIERS: readonly { key: TierKey; label: string; pct: number; rate: number; score: number }[] = [
-  { key: "LEGEND", label: "레전드", pct: 0.03, rate: 1, score: 100 },
-  { key: "EPIC", label: "에픽", pct: 0.1, rate: 4, score: 45 },
-  { key: "RARE", label: "레어", pct: 0.25, rate: 12, score: 18 },
-  { key: "UNCOMMON", label: "언커먼", pct: 0.55, rate: 30, score: 7 },
-  { key: "COMMON", label: "커먼", pct: 1, rate: 53, score: 2 },
-];
-
-export type Card = {
-  id: string;
-  name: string;
-  team: string;
-  teamId: string;
-  teamLogo: string;
-  photo: string;
-  pos: string;
-  back: string;
-  role: Role;
-  war: number;
-  tier: TierKey;
-  headline: string;
-  stats: { k: string; v: string }[];
+// 구단 색: 카드 내부 배경에 은은하게 깔아 팀을 구분한다. 없는 teamId는 중립 회색(card.tsx에서 처리).
+const TEAM_COLOR: Record<string, string> = {
+  LG: "#C30452",
+  KT: "#EB1E25",
+  SS: "#074CA1",
+  OB: "#131230",
+  HT: "#EA0029",
+  HH: "#FF6600",
+  NC: "#315288",
+  LT: "#041E42",
+  SK: "#CE0E2D",
+  WO: "#570514",
 };
 
-/** COMMON=1 ... LEGEND=5 */
-export function tierRankOf(tier: TierKey): number {
-  return TIERS.length - TIERS.findIndex((t) => t.key === tier);
-}
-
-export function groupByTier(pool: Card[]): Record<TierKey, Card[]> {
-  const out = Object.fromEntries(TIERS.map((t) => [t.key, [] as Card[]])) as Record<TierKey, Card[]>;
-  for (const c of pool) out[c.tier].push(c);
-  return out;
-}
-
-/** 등급을 확률로 먼저 굴리고, 그 등급 안에서 균등하게 한 명 뽑는다. 빈 등급이면 아래 등급으로 흘린다. */
-export function drawOne(byTier: Record<TierKey, Card[]>, rnd: () => number = Math.random): Card {
-  let roll = rnd() * TIERS.reduce((s, t) => s + t.rate, 0);
-  for (const t of TIERS) {
-    roll -= t.rate;
-    const bucket = byTier[t.key];
-    if (roll < 0 && bucket.length) return bucket[Math.floor(rnd() * bucket.length) % bucket.length];
-  }
-  for (const t of [...TIERS].reverse()) {
-    const bucket = byTier[t.key];
-    if (bucket.length) return bucket[Math.floor(rnd() * bucket.length) % bucket.length];
-  }
-  throw new Error("카드 풀이 비어 있어요");
-}
-
-/** n장을 중복 없이 뽑는다. 장당 20회 재시도하고, 그래도 겹치면 남은 풀에서 아무거나 채운다. */
-export function drawPack(byTier: Record<TierKey, Card[]>, n: number, rnd: () => number = Math.random): Card[] {
-  const all = Object.values(byTier).flat();
-  const used = new Set<string>();
-  const picked: Card[] = [];
-  for (let i = 0; i < n && used.size < all.length; i++) {
-    let card = drawOne(byTier, rnd);
-    for (let attempt = 0; used.has(card.id) && attempt < 20; attempt++) card = drawOne(byTier, rnd);
-    if (used.has(card.id)) card = all.find((c) => !used.has(c.id))!;
-    used.add(card.id);
-    picked.push(card);
-  }
-  return picked;
-}
-
-/** "105 2/3", "0 1/3", "12", "" 같은 이닝 문자열을 실수로 바꾼다. */
-export function parseInnings(raw: unknown): number {
-  const s = String(raw ?? "").trim();
-  const m = s.match(/^(\d+)(?:\s+(\d)\/3)?$/);
-  if (!m) return 0;
-  return Number(m[1]) + (m[2] ? Number(m[2]) / 3 : 0);
-}
-
-/** war 내림차순으로 정렬해 역할군 내 순위 비율로 등급을 매긴다. cards는 이미 한 역할군이어야 한다. */
-export function assignTiers(cards: Omit<Card, "tier">[]): Card[] {
-  const sorted = [...cards].sort((a, b) => b.war - a.war);
-  const n = sorted.length;
-  return sorted.map((c, i) => {
-    const p = (i + 1) / n;
-    const tier = (TIERS.find((t) => p <= t.pct) ?? TIERS[TIERS.length - 1]).key;
-    return { ...c, tier };
-  });
-}
+export const KBO: SportConfig = {
+  key: "kbo",
+  title: "KBO 카드팩 개봉전",
+  seasonLabel: String(SEASON),
+  emblem: "⚾",
+  packSub: `${SEASON} KBO`,
+  teamColor: TEAM_COLOR,
+  miniStatKeys: (role) => (role === "타자" ? ["타율", "WAR"] : ["ERA", "WAR"]),
+  guide: {
+    pool: `${SEASON} 시즌 기록 중 최소 출전을 넘긴 선수만 나와요. 타자 50타석, 선발 20이닝, 불펜 15이닝.`,
+    tier: "역할군(타자·선발·불펜) 안에서 WAR 순위로 갈라요. 그래서 마무리투수도 레전드가 될 수 있어요.",
+  },
+};
 
 type Row = Record<string, unknown>;
 
@@ -127,7 +71,7 @@ function position(row: Row, fallback: string): string {
   }
 }
 
-function baseCard(row: Row, role: Role, war: number): Omit<Card, "tier" | "headline" | "stats"> {
+function baseCard(row: Row, role: Role, rating: number): Omit<Card, "tier" | "headline" | "stats"> {
   return {
     id: `${role}-${row.playerId}`,
     name: String(row.playerName),
@@ -138,7 +82,7 @@ function baseCard(row: Row, role: Role, war: number): Omit<Card, "tier" | "headl
     pos: position(row, role),
     back: row.backNumber ? `#${row.backNumber}` : "",
     role,
-    war,
+    rating,
   };
 }
 
@@ -219,7 +163,15 @@ async function fetchStats(playerType: "HITTER" | "PITCHER"): Promise<Row[]> {
   return rows.filter((r) => r && r.playerId && r.playerName);
 }
 
-export async function getPool(): Promise<Card[]> {
+/** "105 2/3", "0 1/3", "12", "" 같은 이닝 문자열을 실수로 바꾼다. */
+export function parseInnings(raw: unknown): number {
+  const s = String(raw ?? "").trim();
+  const m = s.match(/^(\d+)(?:\s+(\d)\/3)?$/);
+  if (!m) return 0;
+  return Number(m[1]) + (m[2] ? Number(m[2]) / 3 : 0);
+}
+
+export async function getKboPool(): Promise<Card[]> {
   const [hitterRows, pitcherRows] = await Promise.all([fetchStats("HITTER"), fetchStats("PITCHER")]);
 
   // 타자: 최소 출전 기준 PA >= 50 (응답에 PA 필드가 없어 타수+볼넷+몸에맞는공으로 계산)

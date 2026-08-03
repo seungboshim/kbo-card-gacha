@@ -3,7 +3,13 @@
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 import { PlayerCard, STYLE } from "./card";
-import { SEASON, TIERS, drawPack, groupByTier, tierRankOf, type Card, type TierKey } from "./kbo";
+import { TIERS, drawPack, groupByTier, tierRankOf, type Card, type SportConfig, type TierKey } from "./deck";
+import { KBO } from "../_sports/kbo";
+import { EPL } from "../_sports/epl";
+
+// sport 전체(SportConfig, 함수 필드 포함)는 서버→클라이언트 경계를 직렬화로 못 건너간다.
+// 그래서 서버 컴포넌트인 page.tsx는 key만 문자열로 넘기고, 클라이언트에서 실제 설정을 찾는다.
+const SPORTS: Record<SportConfig["key"], SportConfig> = { kbo: KBO, epl: EPL };
 
 type Phase = "setup" | "picking" | "opening" | "revealing" | "result";
 type OpenStage = "reposition" | "tear" | "drop";
@@ -52,7 +58,8 @@ const CLIP_WHOLE = packClip();
 const CLIP_LEFT = packClip(0, TEAR_X, "right");
 const CLIP_RIGHT = packClip(TEAR_X, 100, "left");
 
-export default function Game({ pool }: { pool: Card[] }) {
+export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: SportConfig["key"] }) {
+  const sport = SPORTS[sportKey];
   const [phase, setPhase] = useState<Phase>("setup");
   const [numPlayers, setNumPlayers] = useState(2);
   const [packSize, setPackSize] = useState(5);
@@ -218,7 +225,7 @@ export default function Game({ pool }: { pool: Card[] }) {
         <div className="absolute inset-x-[-6%] top-[38%] -rotate-[4deg] bg-[#111827] py-1.5 text-center shadow-lg sm:py-2">
           <div className="text-sm leading-none font-black tracking-tight text-white sm:text-xl">카드깡</div>
           <div className="mt-0.5 text-[6px] leading-none font-bold tracking-[.2em] text-amber-300 sm:text-[8px]">
-            {SEASON} KBO
+            {sport.packSub}
           </div>
         </div>
 
@@ -256,12 +263,12 @@ export default function Game({ pool }: { pool: Card[] }) {
             <p>
               <b className="text-white">카드 풀</b>
               <br />
-              {SEASON} 시즌 기록 중 최소 출전을 넘긴 선수만 나와요. 타자 50타석, 선발 20이닝, 불펜 15이닝.
+              {sport.guide.pool}
             </p>
             <p>
               <b className="text-white">등급</b>
               <br />
-              역할군(타자·선발·불펜) 안에서 WAR 순위로 갈라요. 그래서 마무리투수도 레전드가 될 수 있어요.
+              {sport.guide.tier}
             </p>
             <ul className="space-y-0.5 tabular-nums">
               {TIERS.map((t) => (
@@ -332,7 +339,7 @@ export default function Game({ pool }: { pool: Card[] }) {
                         onClick={() => setOverlayCard(card)}
                         className={`block w-full text-left outline-none sm:hidden ${hoverCls} ${flipCls}`}
                       >
-                        <PlayerCard card={card} size="mini" />
+                        <PlayerCard card={card} sport={sport} size="mini" />
                       </button>
                       {/* sm 이상: compact 카드, 누르면 스택 맨 앞으로 이동(모달은 열지 않음) */}
                       <button
@@ -341,7 +348,7 @@ export default function Game({ pool }: { pool: Card[] }) {
                         onClick={() => bringToFront(p, card.id)}
                         className={`hidden w-full text-left outline-none sm:block ${hoverCls} ${flipCls}`}
                       >
-                        <PlayerCard card={card} size="compact" />
+                        <PlayerCard card={card} sport={sport} size="compact" />
                       </button>
                     </div>
                   );
@@ -426,10 +433,10 @@ export default function Game({ pool }: { pool: Card[] }) {
         <div className="mx-auto flex min-h-[80vh] max-w-md flex-col items-center justify-center gap-8 text-center">
           <div>
             <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
-              KBO 카드팩 개봉전 <span className="text-zinc-500 tabular-nums">{SEASON}</span>
+              {sport.emblem} {sport.title} <span className="text-zinc-500 tabular-nums">{sport.seasonLabel}</span>
             </h1>
             <p className="mt-2 text-sm text-zinc-400">
-              {SEASON} 시즌 실시간 기록으로 만든 카드팩을 열어 최고의 선수를 뽑아보세요
+              {sport.seasonLabel} 시즌 실시간 기록으로 만든 카드팩을 열어 최고의 선수를 뽑아보세요
             </p>
           </div>
 
@@ -637,7 +644,7 @@ export default function Game({ pool }: { pool: Card[] }) {
             >
               ×
             </button>
-            <PlayerCard card={overlayCard} size="full" />
+            <PlayerCard card={overlayCard} sport={sport} size="full" />
           </div>
         </div>
       )}

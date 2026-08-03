@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { TIERS, type Card, type TierKey } from "./kbo";
+import { TIERS, type Card, type SportConfig, type TierKey } from "./deck";
 
 export const STYLE: Record<TierKey, { edge: string; glow: string; chip: string; label: string }> = {
   LEGEND: {
@@ -39,38 +39,36 @@ export const STYLE: Record<TierKey, { edge: string; glow: string; chip: string; 
 
 const LABEL = Object.fromEntries(TIERS.map((t) => [t.key, t.label])) as Record<TierKey, string>;
 
-// 구단 색: 카드 내부 배경에 은은하게 깔아 팀을 구분한다. 없는 teamId는 중립 회색.
-const TEAM_COLOR: Record<string, string> = {
-  LG: "#C30452",
-  KT: "#EB1E25",
-  SS: "#074CA1",
-  OB: "#131230",
-  HT: "#EA0029",
-  HH: "#FF6600",
-  NC: "#315288",
-  LT: "#041E42",
-  SK: "#CE0E2D",
-  WO: "#570514",
-};
+// 구단 색 없는 teamId는 중립 회색.
 const NEUTRAL_TEAM_COLOR = "#52525b";
 
 // mini: 좁은 스택용(대표 스탯 2개) · compact: 넓은 스택용(스탯 8칸) · full: 확대용(큰 카드)
 export type CardSize = "mini" | "compact" | "full";
 
-// mini 카드의 대표 스탯 2개. 첫 칸은 역할별 핵심 지표, 둘째 칸은 항상 WAR(역할 상관없이 비교 가능하게).
-function miniStats(card: Card): { k: string; v: string }[] {
+// mini 카드의 대표 스탯 2개. 종목별로 어떤 스탯이 대표인지 다르다(sport.miniStatKeys).
+function miniStats(card: Card, sport: SportConfig): { k: string; v: string }[] {
   const find = (k: string) => card.stats.find((st) => st.k === k) ?? { k, v: "-" };
-  return [find(card.role === "타자" ? "타율" : "ERA"), find("WAR")];
+  return sport.miniStatKeys(card.role).map(find);
 }
 
-export function PlayerCard({ card, delay = 0, size = "compact" }: { card: Card; delay?: number; size?: CardSize }) {
+export function PlayerCard({
+  card,
+  sport,
+  delay = 0,
+  size = "compact",
+}: {
+  card: Card;
+  sport: SportConfig;
+  delay?: number;
+  size?: CardSize;
+}) {
   const s = STYLE[card.tier];
   // 사진이 없는 선수도 있다(원본 404). 카드 높이는 유지하고 이름으로 대체한다.
   const [noPhoto, setNoPhoto] = useState(false);
   // mini는 좁은 화면 스택용이라 사진을 더 줄여 카드 전체 높이를 낮춘다.
   const photoH = size === "full" ? "h-28" : size === "mini" ? "h-14" : "h-20";
-  const stats = size === "mini" ? miniStats(card) : card.stats;
-  const teamColor = TEAM_COLOR[card.teamId] ?? NEUTRAL_TEAM_COLOR;
+  const stats = size === "mini" ? miniStats(card, sport) : card.stats;
+  const teamColor = sport.teamColor[card.teamId] ?? NEUTRAL_TEAM_COLOR;
   return (
     <div
       className={`animate-[card-in_.5s_cubic-bezier(.2,.8,.2,1)_both] rounded-2xl bg-gradient-to-br p-[1.5px] ${s.edge} ${s.glow}`}
