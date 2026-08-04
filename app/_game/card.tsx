@@ -18,14 +18,17 @@ export const STYLE: Record<
   LEGEND: {
     // 반복 그라디언트라야 좁은 테두리 안에 색이 여러 개 동시에 보인다. 한 번만 흐르는
     // 그라디언트로 두면 2.5px 폭에 색 하나만 걸려서 그냥 흐린 은색이 된다.
-    edge: "bg-[repeating-linear-gradient(115deg,#5eead4_0px,#ffffff_13px,#f0abfc_26px,#a78bfa_39px,#67e8f9_52px,#ffffff_65px,#5eead4_78px)] bg-[length:200%_200%] animate-[holo-drift_6s_ease-in-out_infinite]",
+    // 다만 주기가 짧으면 무지개가 촘촘해져 조잡하다. 카드 한 변(170px)에 한 바퀴가
+    // 조금 넘게 걸리도록 넉넉히 잡고, 색은 흰색을 사이에 끼워 부드럽게 넘긴다.
+    edge: "bg-[repeating-linear-gradient(115deg,#6ee7b7_0px,#ffffff_38px,#d8b4fe_76px,#ffffff_114px,#7dd3fc_152px,#ffffff_190px,#6ee7b7_228px)] bg-[length:200%_200%] animate-[holo-drift_9s_ease-in-out_infinite]",
     glow: "shadow-[0_0_44px_-4px_rgba(150,240,255,0.7)]",
     pad: "p-[2.5px]",
     chip: "bg-zinc-950/70 text-cyan-100 ring-cyan-200/60",
     label: "text-cyan-200",
     // 흰색을 줄이고 색 띠를 살린다. 흰색이 많으면 어두운 팀 색 위에서 회색 얼룩처럼 보인다.
+    // 테두리보다 주기를 더 넓게 잡아, 사진 뒤는 띠가 아니라 넓은 물결로 보이게 한다.
     sheen:
-      "bg-[repeating-linear-gradient(115deg,rgba(120,255,235,0.44)_0px,rgba(255,255,255,0.26)_26px,rgba(255,170,235,0.42)_52px,rgba(160,170,255,0.42)_78px,rgba(120,220,255,0.44)_104px,rgba(120,255,235,0.44)_130px)] bg-[length:200%_200%] animate-[holo-drift_6s_ease-in-out_infinite]",
+      "bg-[repeating-linear-gradient(115deg,rgba(110,231,183,0.4)_0px,rgba(255,255,255,0.22)_58px,rgba(216,180,254,0.4)_116px,rgba(255,255,255,0.22)_174px,rgba(125,211,252,0.4)_232px,rgba(110,231,183,0.4)_290px)] bg-[length:200%_200%] animate-[holo-drift_9s_ease-in-out_infinite]",
   },
   EPIC: {
     edge: "bg-gradient-to-br from-yellow-200 via-amber-400 to-yellow-600",

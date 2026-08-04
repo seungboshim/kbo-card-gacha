@@ -85,6 +85,23 @@ const HAND_SCALE = 0.2;
 const HAND_W = Math.round(HAND_BASE_W * HAND_SCALE);
 const HAND_H = Math.round(HAND_BASE_H * HAND_SCALE);
 
+// 카드팩 색. 종목 색을 따라간다(KBO 노랑 계열, PL 보라 계열). 무늬는 PackShell이 종목별로 가른다.
+const PACK_THEME: Record<string, { base: string; band: string; sub: string; foot: string }> = {
+  kbo: {
+    base: "bg-[linear-gradient(165deg,#fde68a_0%,#fcd34d_42%,#f59e0b_100%)]",
+    band: "bg-[#111827]",
+    sub: "text-amber-300",
+    foot: "text-yellow-950/75",
+  },
+  epl: {
+    base: "bg-[linear-gradient(165deg,#ddd6fe_0%,#a78bfa_42%,#6d28d9_100%)]",
+    band: "bg-[#1e1b4b]",
+    sub: "text-violet-300",
+    // KBO는 밝은 노랑 위라 어두운 글자가 맞지만, 여기는 아래로 갈수록 짙은 보라라 밝은 글자여야 읽힌다.
+    foot: "text-violet-100/85",
+  },
+};
+
 // 키보드 포커스 표시. 다크 배경에서 브라우저 기본 아웃라인이 잘 안 보여서 직접 그린다.
 // 버튼마다 손으로 적으면 빠지는 곳이 생겨서 한 군데로 모았다.
 const FOCUS_RING = "outline-none focus-visible:ring-2 focus-visible:ring-white/70";
@@ -378,29 +395,52 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
   // "그 팩을 뜯는다"는 연결이 유지된다. clip으로 위/아래 절반만 남기면 tear에서 두 조각으로 쪼갤 수 있다.
   function PackShell({ dim, clip, animateClass }: { dim?: boolean; clip?: "left" | "right"; animateClass?: string }) {
     const clipPath = clip === "left" ? CLIP_LEFT : clip === "right" ? CLIP_RIGHT : CLIP_WHOLE;
+    const t = PACK_THEME[sport.key];
     return (
       <div
-        className={`absolute inset-0 overflow-hidden bg-[linear-gradient(165deg,#fde68a_0%,#fcd34d_42%,#f59e0b_100%)] ${dim ? "brightness-[.45]" : ""} ${animateClass ?? ""}`}
+        className={`absolute inset-0 overflow-hidden ${t.base} ${dim ? "brightness-[.45]" : ""} ${animateClass ?? ""}`}
         style={{ clipPath }}
       >
-        {/* 야구공 실밥: 큰 점선 원 테두리의 활 부분만 팩을 지나가게 둔다(좌우 각각, 서로 교차하지 않게) */}
-        <div className="absolute top-1/2 -left-[165%] aspect-square w-[190%] -translate-y-1/2 rounded-full border-[3px] border-dashed border-white/50" />
-        <div className="absolute top-1/2 -right-[165%] aspect-square w-[190%] -translate-y-1/2 rounded-full border-[3px] border-dashed border-white/50" />
+        {sport.key === "epl" ? (
+          /* 축구공: 가운데 오각형과 거기서 뻗은 다섯 개 선. 실제 축구공 무늬를 다 그리지 않아도
+             이 조합이면 축구공으로 읽힌다. 팩보다 크게 잡아 무늬가 잘려 나가게 둔다. */
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 100 100"
+            className="absolute top-[26%] left-1/2 w-[150%] -translate-x-1/2 -translate-y-1/2 overflow-visible"
+          >
+            <g fill="none" stroke="rgba(255,255,255,.42)" strokeWidth="2.4" strokeLinejoin="round">
+              <circle cx="50" cy="50" r="47" />
+              <polygon points="50,32 67.1,44.4 60.6,64.6 39.4,64.6 32.9,44.4" fill="rgba(255,255,255,.3)" />
+              <path d="M50 32V2M67.1 44.4L95.7 35.2M60.6 64.6L78.2 88.8M39.4 64.6L21.8 88.8M32.9 44.4L4.3 35.2" />
+            </g>
+          </svg>
+        ) : (
+          /* 야구공 실밥: 큰 점선 원 테두리의 활 부분만 팩을 지나가게 둔다(좌우 각각, 서로 교차하지 않게) */
+          <>
+            <div className="absolute top-1/2 -left-[165%] aspect-square w-[190%] -translate-y-1/2 rounded-full border-[3px] border-dashed border-white/50" />
+            <div className="absolute top-1/2 -right-[165%] aspect-square w-[190%] -translate-y-1/2 rounded-full border-[3px] border-dashed border-white/50" />
+          </>
+        )}
 
         {/* 위·아래 밀봉부: 살짝 짙은 띠 */}
         <div className="absolute inset-x-0 top-0 h-[7%] bg-black/10" />
         <div className="absolute inset-x-0 bottom-0 h-[7%] bg-black/10" />
 
         {/* 가운데 워드마크 밴드 */}
-        <div className="absolute inset-x-[-6%] top-[38%] -rotate-[4deg] bg-[#111827] py-1.5 text-center shadow-lg sm:py-2">
+        <div
+          className={`absolute inset-x-[-6%] top-[38%] -rotate-[4deg] py-1.5 text-center shadow-lg sm:py-2 ${t.band}`}
+        >
           <div className="text-sm leading-none font-black tracking-tight text-white sm:text-xl">카드깡</div>
-          <div className="mt-0.5 text-[6px] leading-none font-bold tracking-[.2em] text-amber-300 sm:text-[8px]">
+          <div className={`mt-0.5 text-[6px] leading-none font-bold tracking-[.2em] sm:text-[8px] ${t.sub}`}>
             {sport.packSub}
           </div>
         </div>
 
         {/* 하단 표기 */}
-        <div className="absolute inset-x-0 bottom-[11%] text-center text-[7px] leading-tight font-bold text-yellow-950/75 sm:text-[9px]">
+        <div
+          className={`absolute inset-x-0 bottom-[11%] text-center text-[7px] leading-tight font-bold sm:text-[9px] ${t.foot}`}
+        >
           선수 카드 {packSize}장
           <br />
           등급 무작위
@@ -484,8 +524,12 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
           const score = stack.reduce((s, c) => s + SCORE_OF[c.tier], 0);
           return (
             <div key={p} className="flex w-full flex-col items-center">
-              {/* 이름/점수가 스택 카드 위에 항상 보이게: 배경 불투명 + z-index를 카드보다 높게 */}
-              <div className="relative z-20 mb-1 w-full bg-zinc-950 py-0.5 text-center sm:mb-2 sm:py-1">
+              {/* 배경을 깔지 않는다. 불투명하게 두면 위 줄 카드의 광원(레전드는 특히 넓다)을
+                  잘라서 네모난 검은 띠가 보인다. 글자는 z-index로만 카드 위에 올리고,
+                  광원이 뒤로 번져도 읽히게 그림자를 준다. */}
+              <div
+                className="relative z-20 mb-1 w-full py-0.5 text-center [text-shadow:0_1px_3px_rgba(0,0,0,0.9)] sm:mb-2 sm:py-1"
+              >
                 <div className={`text-sm font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</div>
                 <div className="text-lg font-black tabular-nums">{score}</div>
               </div>
