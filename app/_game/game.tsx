@@ -42,6 +42,49 @@ const PLAYERS = [
 const TIER_LABEL = Object.fromEntries(TIERS.map((t) => [t.key, t.label])) as Record<TierKey, string>;
 const SCORE_OF = Object.fromEntries(TIERS.map((t) => [t.key, t.score])) as Record<TierKey, number>;
 
+// 대결 화면 배치: 인원수별로 몇 번째 줄에 어떤 플레이어(PLAYERS 인덱스)가 들어가는지.
+// 화면 폭과 무관하게 항상 이 모양대로 간다 — 2인은 가로 한 줄, 3인은 역삼각형, 4인은 2x2.
+const BATTLE_ROWS: Record<number, number[][]> = {
+  2: [[0, 1]],
+  3: [
+    [0, 1],
+    [2],
+  ],
+  4: [
+    [0, 1],
+    [2, 3],
+  ],
+};
+
+// 각 자리 카드가 대결에서 등장할 때 출발하는 방향(중심의 반대쪽). x: 좌우, y: 상하(+는 아래).
+const APPROACH_DIR: Record<number, { x: number; y: number }[]> = {
+  2: [
+    { x: -1, y: 0 }, // 1P: 왼쪽
+    { x: 1, y: 0 }, // 2P: 오른쪽
+  ],
+  3: [
+    { x: -1, y: -1 }, // 1P: 왼쪽 위
+    { x: 1, y: -1 }, // 2P: 오른쪽 위
+    { x: 0, y: 1 }, // 3P: 아래
+  ],
+  4: [
+    { x: -1, y: -1 }, // 1P: 왼쪽 위
+    { x: 1, y: -1 }, // 2P: 오른쪽 위
+    { x: -1, y: 1 }, // 3P: 왼쪽 아래
+    { x: 1, y: 1 }, // 4P: 오른쪽 아래
+  ],
+};
+const APPROACH_X = 60; // px
+const APPROACH_Y = 40; // px
+
+// 상단 남은 손패 띠: mini 카드를 이 폭 기준으로 그린 뒤 scale로 줄인다.
+// 148은 renderStacks가 mini 카드 높이로 실측해 쓰는 값(--stack-card-h)과 같다.
+const HAND_BASE_W = 170;
+const HAND_BASE_H = 148;
+const HAND_SCALE = 0.2;
+const HAND_W = Math.round(HAND_BASE_W * HAND_SCALE);
+const HAND_H = Math.round(HAND_BASE_H * HAND_SCALE);
+
 // 판정 결과를 글로 요약. 연출이 안 보여도(스크린리더, prefers-reduced-motion) 결과를 알 수 있게 aria-live로 읽힌다.
 function roundSummary(r: RoundResult, final: boolean): string {
   const label = (e: BattleSide) => `${PLAYERS[e.player].name} ${TIER_LABEL[e.card.tier]}`;
@@ -153,7 +196,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
 
   useEffect(() => {
     if (!battleAnim) return;
-    const t1 = setTimeout(() => setBattleStage("judge"), 700);
+    const t1 = setTimeout(() => setBattleStage("judge"), 350);
     const t2 = setTimeout(() => {
       const next = applyRound(battleAnim.beforeDecks, battleAnim.result);
       const quiet = battleAnim.result.losers.length === 0 ? battleAnim.beforeQuiet + 1 : 0;
@@ -163,7 +206,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
       if (end.finished) setBattleFinish(end);
       setBattleAnim(null);
       setBattleStage("idle");
-    }, 1900);
+    }, 950);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
@@ -171,8 +214,8 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
   }, [battleAnim]);
 
   // 자동 진행: 판정/정리가 끝나(battleAnim이 비고) 아직 안 끝났으면 다음 판을 예약한다.
-  // 500ms는 새 카드가 등장하는 연출(card-in)을 볼 시간이고, 이후 클래시·판정(1900ms)까지 더하면
-  // 한 판이 총 2.4초 정도로 흐른다. phase가 battle을 벗어나면(결과로 돌아가기 등) cleanup에서 예약을 지운다.
+  // 250ms는 새 카드가 등장하는 걸 볼 시간이고, 이후 충돌(350ms)·판정(600ms)까지 더하면
+  // 한 판이 총 1.2초 정도로 흐른다. phase가 battle을 벗어나면(결과로 돌아가기 등) cleanup에서 예약을 지운다.
   // 안전장치: 판수가 비정상적으로 커지면 battleEnd에 limit 0을 줘 그 자리에서 강제로 끝낸다.
   useEffect(() => {
     if (phase !== "battle" || battleAnim || battleFinish) return;
@@ -182,7 +225,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
         return;
       }
       playRound();
-    }, 500);
+    }, 250);
     return () => clearTimeout(t);
     // playRound는 매 렌더마다 새로 만들어져서 deps에 넣으면 대결과 무관한 리렌더에도
     // 타이머가 리셋된다. 실제로 쓰는 값은 이미 다 deps에 있다.
@@ -524,29 +567,116 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
     );
   }
 
+  // 남은 손패를 mini 카드 앞면을 겹쳐서 보여준다(뒷면이 아니다 — 카드깡이 끝나 이미 다 공개됐다).
+  // 새 size를 만들지 않고 mini 카드를 HAND_BASE_W 기준으로 그린 뒤 scale로 축소한다.
+  function miniHandCard(card: Card) {
+    return (
+      <div className="relative shrink-0 overflow-hidden rounded-[3px]" style={{ width: HAND_W, height: HAND_H }}>
+        <div style={{ width: HAND_BASE_W, transform: `scale(${HAND_SCALE})`, transformOrigin: "top left" }}>
+          <PlayerCard card={card} sport={sport} size="mini" />
+        </div>
+      </div>
+    );
+  }
+
+  // 대결 상단 띠: 플레이어별 남은 카드를 겹쳐서 보여준다. 탈락했으면 숫자 없이 "탈락"만 둔다.
+  function renderRemainingHands() {
+    return (
+      <div className="flex flex-wrap justify-center gap-3 sm:gap-5">
+        {Array.from({ length: numPlayers }, (_, p) => p).map((p) => {
+          const deck = battleDecks[p];
+          return (
+            <div key={p} className="flex flex-col items-center gap-1">
+              <span className={`text-xs font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</span>
+              {deck.length === 0 ? (
+                <div style={{ height: HAND_H }} className="flex items-center text-xs font-bold text-zinc-500">
+                  탈락
+                </div>
+              ) : (
+                <div className="flex">
+                  {deck.map((card, i) => (
+                    <div key={card.id} style={i === 0 ? undefined : { marginLeft: -HAND_W / 2 }}>
+                      {miniHandCard(card)}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   // 대결 화면. 판정 전/후 대기(battleAnim 없음)와 진행 중(battleAnim 있음)을 같은 자리에 그린다.
   // 카드 크기는 renderStacks와 같은 규칙(sm 미만 mini, sm 이상 compact)을 그대로 따른다.
   function renderBattle() {
     const finalUp = !battleAnim && !battleFinish && battleRound > 0 && isFinalRound(battleDecks);
-    return (
-      <div className="flex min-h-[80vh] flex-col justify-between gap-8 py-4">
-        <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
-          {Array.from({ length: numPlayers }, (_, p) => p).map((p) => {
-            const n = battleDecks[p].length;
-            return (
-              <div
-                key={p}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm transition-opacity ${
-                  n > 0 ? "bg-white/5" : "bg-white/[.03] opacity-40"
-                }`}
-              >
-                <span className={`font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</span>
-                <span className="font-black tabular-nums">{n}</span>
-                {n === 0 && <span className="text-xs text-zinc-500">탈락</span>}
-              </div>
-            );
-          })}
+    const rows = BATTLE_ROWS[numPlayers] ?? [Array.from({ length: numPlayers }, (_, p) => p)];
+
+    // 대결 카드 한 장. 대기 중엔 스택 맨 앞 카드, 진행 중엔 이번 판 카드를 자기 자리(p)에 그린다.
+    // 래퍼 폭 계산은 renderStacks와 같다(min-w-0 + flex-1 + max-w-170px) — grid justify-items로 인한
+    // 폭 불일치를 피하려 일부러 grid 대신 flex를 쓴다.
+    function battleCard(p: number) {
+      if (!battleAnim) {
+        const card = frontOf(battleDecks[p]);
+        if (!card) return null;
+        return (
+          <div key={p} className="flex min-w-0 flex-1 max-w-[170px] flex-col items-center gap-1">
+            <span className={`text-xs font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</span>
+            {/* renderStacks와 같은 규칙: sm 미만 mini, sm 이상 compact */}
+            <div className="w-full sm:hidden">
+              <PlayerCard key={card.id} card={card} sport={sport} size="mini" />
+            </div>
+            <div className="hidden w-full sm:block">
+              <PlayerCard key={card.id} card={card} sport={sport} size="compact" />
+            </div>
+          </div>
+        );
+      }
+      const entry = battleAnim.result.entries.find((e) => e.player === p);
+      if (!entry) return null;
+      const isWinner = battleAnim.result.winners.some((w) => w.player === p);
+      const judge = battleStage === "judge";
+      const dir = APPROACH_DIR[numPlayers]?.[p] ?? { x: 0, y: 0 };
+      const approachStyle = {
+        "--bx": `${dir.x * APPROACH_X}px`,
+        "--by": `${dir.y * APPROACH_Y}px`,
+      } as CSSProperties;
+      const faceClass =
+        battleStage === "clash"
+          ? "animate-[battle-approach_.25s_ease-out_both]"
+          : judge
+            ? isWinner
+              ? "animate-[battle-win-glow_.4s_ease-in-out]"
+              : "animate-[battle-lose-shatter_.25s_ease-in_forwards]"
+            : "";
+      return (
+        <div key={p} className="flex min-w-0 flex-1 max-w-[170px] flex-col items-center gap-1">
+          <span className={`text-xs font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</span>
+          <div className={`w-full sm:hidden ${faceClass}`} style={approachStyle}>
+            <PlayerCard card={entry.card} sport={sport} size="mini" />
+          </div>
+          <div className={`hidden w-full sm:block ${faceClass}`} style={approachStyle}>
+            <PlayerCard card={entry.card} sport={sport} size="compact" />
+          </div>
+          {judge && (
+            <span className={`text-[11px] font-bold ${isWinner ? "text-emerald-400" : "text-red-400"}`}>
+              {isWinner ? (battleAnim.result.draw ? "무승부" : "승") : "파괴"}
+            </span>
+          )}
+          {battleAnim.final && (
+            <span className="text-[10px] text-zinc-500 tabular-nums">활약도 {entry.card.rating.toFixed(1)}</span>
+          )}
         </div>
+      );
+    }
+
+    return (
+      // 4인 2x2처럼 줄이 두 개가 되면 세로가 빡빡해져 gap/padding을 결과 화면보다 좁게 잡는다
+      // (카드 크기는 그대로 두고 여백만 줄인다 — 1440x950 안에 들어오도록 실측해 맞춘 값).
+      <div className="flex min-h-[80vh] flex-col justify-between gap-2 py-2 sm:gap-3 sm:py-2">
+        {renderRemainingHands()}
 
         {battleFinish ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-5 text-center">
@@ -563,9 +693,11 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
               {battleFinish.champions.map((p) => (
                 <div key={p} className="flex flex-col items-center gap-2">
                   <span className={`font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</span>
-                  <div className="flex flex-wrap justify-center gap-1">
+                  {/* 폭은 결과·대결 화면과 같은 170px. 좁게 잡으면 이름이 잘리고 스탯 칸이 두 줄로 깨진다.
+                      여러 장이 남을 수 있어 size는 mini로 두고 넘치면 줄바꿈한다. */}
+                  <div className="flex flex-wrap justify-center gap-2">
                     {battleDecks[p].map((card) => (
-                      <div key={card.id} className="w-16 sm:w-24">
+                      <div key={card.id} className="w-[170px] max-w-full">
                         <PlayerCard card={card} sport={sport} size="mini" />
                       </div>
                     ))}
@@ -603,72 +735,17 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                 {battleAnim && battleStage === "judge" ? roundSummary(battleAnim.result, battleAnim.final) : ""}
               </p>
 
-              <div
-                className="relative grid grid-cols-2 items-end justify-items-center gap-3 sm:grid-cols-[repeat(var(--stack-cols),minmax(0,1fr))] sm:gap-6"
-                style={{ "--stack-cols": numPlayers } as CSSProperties}
-              >
-                {!battleAnim
-                  ? survivorsOf(battleDecks).map((p) => {
-                      const card = frontOf(battleDecks[p])!;
-                      return (
-                        <div key={p} className="flex w-full max-w-[170px] flex-col items-center gap-1">
-                          <span className={`text-xs font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</span>
-                          {/* renderStacks와 같은 규칙: sm 미만 mini, sm 이상 compact */}
-                          <div className="w-full sm:hidden">
-                            <PlayerCard key={card.id} card={card} sport={sport} size="mini" />
-                          </div>
-                          <div className="hidden w-full sm:block">
-                            <PlayerCard key={card.id} card={card} sport={sport} size="compact" />
-                          </div>
-                        </div>
-                      );
-                    })
-                  : battleAnim.result.entries.map((entry, i, all) => {
-                      const isWinner = battleAnim.result.winners.some((w) => w.player === entry.player);
-                      const judge = battleStage === "judge";
-                      const bx = (i - (all.length - 1) / 2) * 40;
-                      const faceClass =
-                        battleStage === "clash"
-                          ? "animate-[battle-approach_.5s_ease-out_both]"
-                          : judge
-                            ? isWinner
-                              ? "animate-[battle-win-glow_.5s_ease-in-out_2]"
-                              : "animate-[battle-lose-shatter_.7s_ease-in_forwards]"
-                            : "";
-                      return (
-                        <div key={entry.player} className="flex w-full max-w-[170px] flex-col items-center gap-1">
-                          <span className={`text-xs font-bold ${PLAYERS[entry.player].text}`}>
-                            {PLAYERS[entry.player].name}
-                          </span>
-                          <div className={`w-full sm:hidden ${faceClass}`} style={{ "--bx": `${bx}px` } as CSSProperties}>
-                            <PlayerCard card={entry.card} sport={sport} size="mini" />
-                          </div>
-                          <div
-                            className={`hidden w-full sm:block ${faceClass}`}
-                            style={{ "--bx": `${bx}px` } as CSSProperties}
-                          >
-                            <PlayerCard card={entry.card} sport={sport} size="compact" />
-                          </div>
-                          {judge && (
-                            <span
-                              className={`text-[11px] font-bold ${isWinner ? "text-emerald-400" : "text-red-400"}`}
-                            >
-                              {isWinner ? (battleAnim.result.draw ? "무승부" : "승") : "파괴"}
-                            </span>
-                          )}
-                          {battleAnim.final && (
-                            <span className="text-[10px] text-zinc-500 tabular-nums">
-                              활약도 {entry.card.rating.toFixed(1)}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
+              <div className="relative flex w-full flex-col gap-3 sm:gap-6">
+                {rows.map((row, ri) => (
+                  <div key={ri} className="flex w-full flex-wrap justify-center gap-3 sm:gap-6">
+                    {row.map((p) => battleCard(p))}
+                  </div>
+                ))}
                 {battleAnim && battleStage === "clash" && (
                   <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 m-auto h-20 w-20 animate-[battle-flash_.4s_ease-out_both] rounded-full bg-white/70 blur-md"
-                    style={{ animationDelay: "280ms" }}
+                    className="pointer-events-none absolute inset-0 m-auto h-20 w-20 animate-[battle-flash_.2s_ease-out_both] rounded-full bg-white/70 blur-md"
+                    style={{ animationDelay: "140ms" }}
                   />
                 )}
               </div>
@@ -694,7 +771,10 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
   }
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-4 sm:py-6">
+    // 대결 화면은 4인 2x2 카드 두 줄이 들어가야 해서 세로가 빡빡하다. 그때만 상하 여백을 줄인다.
+    <main
+      className={`mx-auto min-h-screen w-full max-w-5xl px-4 ${phase === "battle" ? "py-1" : "py-4 sm:py-6"}`}
+    >
       {gradeGuide()}
 
       {phase === "setup" && (

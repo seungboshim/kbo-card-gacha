@@ -121,14 +121,14 @@ body {
   }
 }
 
-/* 대결 화면: 카드가 자기 자리(--bx 오프셋)에서 가운데로 모여 붙는 연출 */
+/* 대결 화면: 카드가 자기 자리(--bx/--by 오프셋)에서 가운데로 모여 붙는 연출.
+   크기는 결과 화면 스택 카드와 같아야 해서 scale은 쓰지 않고 이동만으로 표현한다. */
 @keyframes battle-approach {
   from {
-    transform: translateX(var(--bx, 0)) scale(0.85);
+    transform: translate(var(--bx, 0), var(--by, 0));
     opacity: 0;
   }
-  70% {
-    transform: translateX(calc(var(--bx, 0) * 0.06)) scale(1.08);
+  60% {
     opacity: 1;
   }
   100% {
@@ -153,34 +153,32 @@ body {
   }
 }
 
-/* 승자 카드가 등급색으로 펄스하며 빛나는 연출 */
+/* 승자 카드가 등급색으로 한 번 빛나는 연출. 크기는 그대로 두고 밝기로만 표현한다 */
 @keyframes battle-win-glow {
   0%,
   100% {
     filter: brightness(1) saturate(1);
-    transform: scale(1);
   }
   50% {
     filter: brightness(1.5) saturate(1.3);
-    transform: scale(1.07);
   }
 }
 
-/* 패자 카드가 금 가듯 밝아지다 색이 빠지며 흩어져 사라지는 연출 */
+/* 패자 카드가 금 가듯 밝아지다 색이 빠지며 짧게 사라지는 연출 */
 @keyframes battle-lose-shatter {
   0% {
     opacity: 1;
     filter: grayscale(0) brightness(1);
-    transform: scale(1) rotate(0deg);
+    transform: scale(1) rotate(0deg) translateY(0);
   }
-  35% {
+  40% {
     filter: grayscale(0.3) brightness(1.4) contrast(1.3);
-    transform: scale(1.04) rotate(-2deg);
+    transform: scale(0.95) rotate(-2deg) translateY(2px);
   }
   100% {
     opacity: 0;
     filter: grayscale(1) brightness(0.4);
-    transform: scale(0.7) rotate(6deg);
+    transform: scale(0.85) rotate(3deg) translateY(8px);
   }
 }
 
