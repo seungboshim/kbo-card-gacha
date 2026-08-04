@@ -111,7 +111,7 @@ export function PlayerCard({
               height={262}
               priority={size === "full"}
               onError={() => setNoPhoto(true)}
-              className={`${photoH} w-auto object-contain drop-shadow-lg`}
+              className={`${photoH} w-auto object-contain outline outline-1 -outline-offset-1 outline-white/10 drop-shadow-lg`}
             />
           )}
         </div>

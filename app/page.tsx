@@ -24,7 +24,7 @@ export default function Home() {
             <Link
               key={s.key}
               href={`/${s.key}`}
-              className="relative flex flex-col items-center gap-2 overflow-hidden rounded-2xl border px-6 py-10 transition hover:scale-[1.02] active:scale-[.98]"
+              className="relative flex flex-col items-center gap-2 overflow-hidden rounded-2xl border px-6 py-10 transition-transform hover:scale-[1.02] active:scale-[0.96]"
               style={{
                 background: `radial-gradient(130% 100% at 50% -5%, ${color}80 0%, ${color}1f 55%, transparent 80%), rgba(255,255,255,0.03)`,
                 borderColor: `${color}99`,

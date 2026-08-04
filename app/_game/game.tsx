@@ -392,7 +392,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
           onClick={() => setShowGuide((v) => !v)}
           aria-expanded={showGuide}
           aria-label="등급이 정해지는 기준"
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-sm leading-none font-bold text-zinc-300 ring-1 ring-white/20 transition hover:bg-white/20"
+          className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-sm leading-none font-bold text-zinc-300 ring-1 ring-white/20 transition-colors after:absolute after:top-1/2 after:left-1/2 after:size-11 after:-translate-x-1/2 after:-translate-y-1/2 after:content-[''] hover:bg-white/20"
         >
           ?
         </button>
@@ -465,7 +465,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                 {stack.map((card, i) => {
                   // 호버는 아주 약한 CSS 피드백만(hover:*), z-index는 절대 안 건드린다.
                   const hoverCls =
-                    "transition duration-200 ease-out hover:-translate-y-[3px] hover:scale-[1.01] hover:brightness-105";
+                    "transition-[translate,scale,filter] duration-200 ease-out hover:-translate-y-[3px] hover:scale-[1.01] hover:brightness-105";
                   const isFront = i === stack.length - 1;
                   const flipCls = isFront ? "animate-[flip-up_.5s_cubic-bezier(.2,.8,.2,1)_both]" : "";
                   return (
@@ -479,7 +479,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                         type="button"
                         aria-label={isFront ? `${card.name} 자세히 보기` : `${card.name} 맨 앞으로`}
                         onClick={() => (isFront ? setOverlayCard(card) : bringToFront(p, card.id))}
-                        className={`block w-full text-left outline-none sm:hidden ${hoverCls} ${flipCls}`}
+                        className={`block w-full rounded-2xl text-left outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:hidden ${hoverCls} ${flipCls}`}
                       >
                         <PlayerCard card={card} sport={sport} size="mini" />
                       </button>
@@ -488,7 +488,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                         type="button"
                         aria-label={`${card.name} 맨 앞으로`}
                         onClick={() => bringToFront(p, card.id)}
-                        className={`hidden w-full text-left outline-none sm:block ${hoverCls} ${flipCls}`}
+                        className={`hidden w-full rounded-2xl text-left outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:block ${hoverCls} ${flipCls}`}
                       >
                         <PlayerCard card={card} sport={sport} size="compact" />
                       </button>
@@ -544,7 +544,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
               type="button"
               onClick={() => flipCardAt(i)}
               aria-label={`손패 카드 ${i + 1}번 뒤집기`}
-              className="shrink-0 rounded-sm transition hover:-translate-y-1 active:scale-95 sm:rounded-md"
+              className="shrink-0 rounded-sm transition-transform hover:-translate-y-1 active:scale-[0.96] sm:rounded-md"
             >
               {bigBack(turn)}
             </button>
@@ -651,20 +651,29 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
               ? "animate-[battle-win-glow_.4s_ease-in-out]"
               : "animate-[battle-lose-shatter_.25s_ease-in_forwards]"
             : "";
+      // 판정 결과는 카드 아래 문구 대신 카드 위 오버레이(테두리+틴트)로 표현한다. 자리를 차지하지 않아
+      // 배지가 붙고 빠질 때 아래 요소가 밀리지 않고, 애니메이션이 꺼져도(prefers-reduced-motion) 그대로 보인다.
+      // faceClass를 쓰는 div의 형제로 둬서, 그 div가 연출 끝에 opacity 0으로 끝나도 영향을 안 받는다.
+      const outcomeCls = !judge ? "" : isWinner ? "ring-2 ring-emerald-400/80" : "bg-black/50 ring-2 ring-red-500/70";
       return (
         <div key={p} className="flex min-w-0 flex-1 max-w-[170px] flex-col items-center gap-1">
           <span className={`text-xs font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</span>
-          <div className={`w-full sm:hidden ${faceClass}`} style={approachStyle}>
-            <PlayerCard card={entry.card} sport={sport} size="mini" />
+          <div className="relative w-full sm:hidden">
+            <div className={faceClass} style={approachStyle}>
+              <PlayerCard card={entry.card} sport={sport} size="mini" />
+            </div>
+            {judge && (
+              <span aria-hidden="true" className={`pointer-events-none absolute inset-0 rounded-2xl ${outcomeCls}`} />
+            )}
           </div>
-          <div className={`hidden w-full sm:block ${faceClass}`} style={approachStyle}>
-            <PlayerCard card={entry.card} sport={sport} size="compact" />
+          <div className="relative hidden w-full sm:block">
+            <div className={faceClass} style={approachStyle}>
+              <PlayerCard card={entry.card} sport={sport} size="compact" />
+            </div>
+            {judge && (
+              <span aria-hidden="true" className={`pointer-events-none absolute inset-0 rounded-2xl ${outcomeCls}`} />
+            )}
           </div>
-          {judge && (
-            <span className={`text-[11px] font-bold ${isWinner ? "text-emerald-400" : "text-red-400"}`}>
-              {isWinner ? (battleAnim.result.draw ? "무승부" : "승") : "파괴"}
-            </span>
-          )}
           {battleAnim.final && (
             <span className="text-[10px] text-zinc-500 tabular-nums">활약도 {entry.card.rating.toFixed(1)}</span>
           )}
@@ -709,14 +718,14 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
               <button
                 type="button"
                 onClick={() => setPhase("result")}
-                className="rounded-xl bg-white px-4 py-1.5 text-sm font-bold text-zinc-950 transition hover:bg-zinc-200 active:scale-[.97]"
+                className="rounded-xl bg-white px-4 py-1.5 text-sm font-bold text-zinc-950 transition-[background-color,scale] hover:bg-zinc-200 active:scale-[0.96]"
               >
                 결과로 돌아가기
               </button>
               <button
                 type="button"
                 onClick={resetGame}
-                className="rounded-xl bg-white/10 px-4 py-1.5 text-sm font-bold text-zinc-200 transition hover:bg-white/20 active:scale-[.97]"
+                className="rounded-xl bg-white/10 px-4 py-1.5 text-sm font-bold text-zinc-200 transition-[background-color,scale] hover:bg-white/20 active:scale-[0.96]"
               >
                 다시하기
               </button>
@@ -725,12 +734,14 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
         ) : (
           <>
             <div className="flex flex-1 flex-col items-center justify-center gap-3">
-              {battleAnim?.final && (
-                <p className="text-center text-xs font-bold tracking-wide text-amber-400 uppercase">마지막 승부</p>
-              )}
-              {battleAnim && battleStage === "judge" && battleAnim.result.draw && (
-                <p className="text-center text-lg font-black text-zinc-200">무승부</p>
-              )}
+              {/* 이 줄은 내용이 없어도 자리를 지킨다. 조건부로 붙였다 빼면 카드 대열이 위아래로 밀린다. */}
+              <div className="flex h-7 items-center justify-center">
+                {battleAnim && battleStage === "judge" && battleAnim.result.draw ? (
+                  <p className="text-center text-lg font-black text-zinc-200">무승부</p>
+                ) : battleAnim?.final ? (
+                  <p className="text-center text-xs font-bold tracking-wide text-amber-400 uppercase">마지막 승부</p>
+                ) : null}
+              </div>
               <p aria-live="polite" className="sr-only">
                 {battleAnim && battleStage === "judge" ? roundSummary(battleAnim.result, battleAnim.final) : ""}
               </p>
@@ -760,7 +771,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
             <button
               type="button"
               onClick={() => setPhase("result")}
-              className="self-center rounded-xl bg-white/10 px-4 py-1.5 text-sm font-bold text-zinc-300 ring-1 ring-white/15 transition hover:bg-white/20 active:scale-[.97]"
+              className="self-center rounded-xl bg-white/10 px-4 py-1.5 text-sm font-bold text-zinc-300 ring-1 ring-white/15 transition-[background-color,scale] hover:bg-white/20 active:scale-[0.96]"
             >
               그만두고 결과로
             </button>
@@ -797,7 +808,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                   type="button"
                   onClick={() => setNumPlayers(n)}
                   aria-pressed={numPlayers === n}
-                  className={`w-16 rounded-xl py-3 font-bold transition ${
+                  className={`w-16 rounded-xl py-3 font-bold transition-colors ${
                     numPlayers === n ? "bg-white text-zinc-950" : "bg-white/5 text-zinc-300 hover:bg-white/10"
                   }`}
                 >
@@ -816,7 +827,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                   type="button"
                   onClick={() => setPackSize(n)}
                   aria-pressed={packSize === n}
-                  className={`w-16 rounded-xl py-3 font-bold transition ${
+                  className={`w-16 rounded-xl py-3 font-bold transition-colors ${
                     packSize === n ? "bg-white text-zinc-950" : "bg-white/5 text-zinc-300 hover:bg-white/10"
                   }`}
                 >
@@ -829,7 +840,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
           <button
             type="button"
             onClick={startGame}
-            className="w-full rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 py-3.5 font-bold text-zinc-950 transition hover:brightness-110 active:scale-[.98]"
+            className="w-full rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 py-3.5 font-bold text-zinc-950 transition-[filter,scale] hover:brightness-110 active:scale-[0.96]"
           >
             시작
           </button>
@@ -851,8 +862,8 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                 disabled={owner !== null}
                 onClick={() => pickSlot(slot)}
                 aria-label={owner === null ? `카드팩 ${slot + 1}번 고르기` : `${PLAYERS[owner].name}의 카드팩`}
-                className={`relative aspect-[10/19] w-20 shrink-0 transition sm:w-28 ${
-                  owner === null ? "hover:scale-105 active:scale-95" : ""
+                className={`relative aspect-[10/19] w-20 shrink-0 transition-transform sm:w-28 ${
+                  owner === null ? "hover:scale-105 active:scale-[0.96]" : ""
                 }`}
               >
                 <PackShell dim={owner !== null} />
@@ -958,10 +969,17 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                 <span className="font-black tabular-nums">{score}</span>
               </div>
             ))}
+          </div>
+
+          {/* 순위표는 점수순이지만 스택은 1P부터 그대로 둔다(누가 뭘 뽑았는지 자리로 찾게) */}
+          {renderStacks(Array.from({ length: numPlayers }, (_, p) => p))}
+
+          {/* 결과를 보고 다음 행동을 고르는 순서라, 버튼은 스택 아래로 둔다(대결 종료 화면과 같은 배치) */}
+          <div className="flex flex-wrap justify-center gap-3">
             <button
               type="button"
               onClick={resetGame}
-              className="rounded-xl bg-white px-4 py-1.5 text-sm font-bold text-zinc-950 transition hover:bg-zinc-200 active:scale-[.97]"
+              className="rounded-xl bg-white px-4 py-1.5 text-sm font-bold text-zinc-950 transition-[background-color,scale] hover:bg-zinc-200 active:scale-[0.96]"
             >
               다시하기
             </button>
@@ -969,14 +987,11 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
               type="button"
               onClick={startBattle}
               disabled={survivorsOf(revealed).length < 2}
-              className="rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-1.5 text-sm font-bold text-zinc-950 transition hover:brightness-110 active:scale-[.97] disabled:opacity-40"
+              className="rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-1.5 text-sm font-bold text-zinc-950 transition-[filter,scale] hover:brightness-110 active:scale-[0.96] disabled:opacity-40"
             >
               대결하기
             </button>
           </div>
-
-          {/* 순위표는 점수순이지만 스택은 1P부터 그대로 둔다(누가 뭘 뽑았는지 자리로 찾게) */}
-          {renderStacks(Array.from({ length: numPlayers }, (_, p) => p))}
         </div>
       )}
 
@@ -998,7 +1013,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
               type="button"
               onClick={() => setOverlayCard(null)}
               aria-label="닫기"
-              className="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-full bg-zinc-900 text-xl leading-none font-bold text-white/80 ring-1 ring-white/20 outline-none transition hover:bg-zinc-800 hover:text-white"
+              className="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-full bg-zinc-900 text-xl leading-none font-bold text-white/80 ring-1 ring-white/20 outline-none transition-colors hover:bg-zinc-800 hover:text-white focus-visible:ring-2 focus-visible:ring-white/70"
             >
               ×
             </button>
