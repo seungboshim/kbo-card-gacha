@@ -4,35 +4,45 @@ import Image from "next/image";
 import { useState } from "react";
 import { TIERS, type Card, type SportConfig, type TierKey } from "./deck";
 
-export const STYLE: Record<TierKey, { edge: string; glow: string; chip: string; label: string }> = {
+// 등급 표현은 세 갈래로 나눈다.
+// edge: 테두리 색 · glow: 바깥 광원(상위 3등급만) · pad: 테두리 두께
+// 색만으로 가르면 mini 카드나 저채도 화면에서 구분이 흐려져서, 두께로 한 겹 더 준다.
+// chip 배경은 등급색이 아니라 어두운 단색이다. 배지가 팀 색 사진 위에 얹히기 때문에
+// 반투명 등급색으로 두면 밝은 팀(울버햄튼 금색 등) 위에서 글자가 묻힌다.
+export const STYLE: Record<TierKey, { edge: string; glow: string; pad: string; chip: string; label: string }> = {
   LEGEND: {
     edge: "from-amber-200 via-yellow-400 to-orange-600",
     glow: "shadow-[0_0_40px_-4px_rgba(251,191,36,0.65)]",
-    chip: "bg-amber-400/15 text-amber-300 ring-amber-400/40",
+    pad: "p-[2px]",
+    chip: "bg-zinc-950/70 text-amber-300 ring-amber-400/50",
     label: "text-amber-300",
   },
   EPIC: {
     edge: "from-fuchsia-300 via-purple-500 to-indigo-600",
     glow: "shadow-[0_0_32px_-6px_rgba(192,132,252,0.6)]",
-    chip: "bg-fuchsia-400/15 text-fuchsia-300 ring-fuchsia-400/40",
+    pad: "p-[2px]",
+    chip: "bg-zinc-950/70 text-fuchsia-300 ring-fuchsia-400/50",
     label: "text-fuchsia-300",
   },
   RARE: {
     edge: "from-sky-300 via-blue-500 to-cyan-500",
     glow: "shadow-[0_0_28px_-8px_rgba(56,189,248,0.55)]",
-    chip: "bg-sky-400/15 text-sky-300 ring-sky-400/40",
+    pad: "p-[1.5px]",
+    chip: "bg-zinc-950/70 text-sky-300 ring-sky-400/50",
     label: "text-sky-300",
   },
   UNCOMMON: {
     edge: "from-emerald-300 via-green-500 to-teal-600",
     glow: "",
-    chip: "bg-emerald-400/15 text-emerald-300 ring-emerald-400/40",
+    pad: "p-[1px]",
+    chip: "bg-zinc-950/70 text-emerald-300 ring-emerald-400/50",
     label: "text-emerald-300",
   },
   COMMON: {
     edge: "from-zinc-500 via-slate-600 to-zinc-700",
     glow: "",
-    chip: "bg-zinc-400/10 text-zinc-400 ring-zinc-500/40",
+    pad: "p-[1px]",
+    chip: "bg-zinc-950/70 text-zinc-400 ring-zinc-500/50",
     label: "text-zinc-400",
   },
 };
@@ -54,12 +64,10 @@ function miniStats(card: Card, sport: SportConfig): { k: string; v: string }[] {
 export function PlayerCard({
   card,
   sport,
-  delay = 0,
   size = "compact",
 }: {
   card: Card;
   sport: SportConfig;
-  delay?: number;
   size?: CardSize;
 }) {
   const s = STYLE[card.tier];
@@ -70,10 +78,8 @@ export function PlayerCard({
   const stats = size === "mini" ? miniStats(card, sport) : card.stats;
   const teamColor = sport.teamColor[card.teamId] ?? NEUTRAL_TEAM_COLOR;
   return (
-    <div
-      className={`animate-[card-in_.5s_cubic-bezier(.2,.8,.2,1)_both] rounded-2xl bg-gradient-to-br p-[1.5px] ${s.edge} ${s.glow}`}
-      style={{ animationDelay: `${delay}ms` }}
-    >
+    // 등장 연출은 호출부가 정한다. 여기서 무조건 걸면 카드가 다시 마운트될 때마다 또 돈다.
+    <div className={`rounded-2xl bg-gradient-to-br ${s.pad} ${s.edge} ${s.glow}`}>
       <div className="flex h-full flex-col overflow-hidden rounded-[14px] bg-zinc-950">
         {/* 팀 색은 사진 배경에서만 뚜렷하게: 흰색 글로스 위에 팀 색을 진하게 깔고 아래로 갈수록 죽인다 */}
         <div
@@ -98,8 +104,9 @@ export function PlayerCard({
           )}
           {noPhoto ? (
             // 사진 대신 사람 상반신 아바타 아이콘. alt 역할은 role="img"+aria-label로 대신하고 svg는 aria-hidden.
-            <div role="img" aria-label={card.name} className={`${photoH} aspect-square`}>
-              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-full w-full fill-white/15">
+            // 비율은 실제 사진(210x262)에 맞춘다. 정사각으로 두면 사진 있는 카드와 실루엣이 달라 줄에서 튄다.
+            <div role="img" aria-label={card.name} className={`${photoH} aspect-[210/262]`}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-full w-full fill-white/35">
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
               </svg>
             </div>
@@ -136,7 +143,7 @@ export function PlayerCard({
         <div className={`mt-auto grid gap-px bg-white/10 text-center ${size === "full" ? "grid-cols-4" : "grid-cols-2"}`}>
           {stats.map((st) => (
             <div key={st.k} className="bg-zinc-950 px-1 py-1.5">
-              <div className="text-[9px] text-zinc-500">{st.k}</div>
+              <div className="text-[10px] text-zinc-500">{st.k}</div>
               <div className={`font-semibold tabular-nums ${size === "full" ? "text-xs" : "text-[11px]"}`}>{st.v}</div>
             </div>
           ))}

@@ -109,11 +109,16 @@ body {
   }
 }
 
-/* 손패에서 카드를 뒤집어 스택 맨 위로 올리는 연출 */
+/* 손패에서 뒤집은 카드가 손패에 있던 그 자리에서 뒤집히며 스택 자리로 올라온다.
+   --fx/--fy는 스택 자리 중심에서 손패 카드 중심까지의 거리, --fs는 크기 비율.
+   game.tsx가 클릭 순간에 실측해 넣는다. 값이 없으면 제자리에서 뒤집기만 한다. */
 @keyframes flip-up {
   from {
-    transform: translateY(64px) rotateY(180deg) scale(0.9);
+    transform: translate(var(--fx, 0px), var(--fy, 64px)) scale(var(--fs, 0.9)) rotateY(180deg);
     opacity: 0;
+  }
+  25% {
+    opacity: 1;
   }
   to {
     transform: none;
@@ -121,19 +126,19 @@ body {
   }
 }
 
-/* 대결 화면: 카드가 자기 자리(--bx/--by 오프셋)에서 가운데로 모여 붙는 연출.
-   크기는 결과 화면 스택 카드와 같아야 해서 scale은 쓰지 않고 이동만으로 표현한다. */
-@keyframes battle-approach {
-  from {
-    transform: translate(var(--bx, 0), var(--by, 0));
-    opacity: 0;
+/* 대결 화면: 이미 자리에 있는 카드가 가운데로 짧게 밀고 들어갔다 돌아온다.
+   --bx/--by는 자기 자리에서 중심의 반대쪽 방향이라 가운데로 가려면 부호를 뒤집는다.
+   등장은 카드가 바뀔 때가 맡고 여기서는 이동만 한다. opacity를 건드리면 있던 카드가
+   사라졌다 다시 나타나 보인다. */
+@keyframes battle-clash {
+  0% {
+    transform: none;
   }
   60% {
-    opacity: 1;
+    transform: translate(calc(var(--bx, 0px) * -1), calc(var(--by, 0px) * -1));
   }
   100% {
     transform: none;
-    opacity: 1;
   }
 }
 

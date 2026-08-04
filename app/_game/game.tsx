@@ -85,6 +85,10 @@ const HAND_SCALE = 0.2;
 const HAND_W = Math.round(HAND_BASE_W * HAND_SCALE);
 const HAND_H = Math.round(HAND_BASE_H * HAND_SCALE);
 
+// 키보드 포커스 표시. 다크 배경에서 브라우저 기본 아웃라인이 잘 안 보여서 직접 그린다.
+// 버튼마다 손으로 적으면 빠지는 곳이 생겨서 한 군데로 모았다.
+const FOCUS_RING = "outline-none focus-visible:ring-2 focus-visible:ring-white/70";
+
 // 판정 결과를 글로 요약. 연출이 안 보여도(스크린리더, prefers-reduced-motion) 결과를 알 수 있게 aria-live로 읽힌다.
 function roundSummary(r: RoundResult, final: boolean): string {
   const label = (e: BattleSide) => `${PLAYERS[e.player].name} ${TIER_LABEL[e.card.tier]}`;
@@ -149,6 +153,11 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
   const [showGuide, setShowGuide] = useState(false);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
+  // 손패 카드를 누른 순간 그 카드가 있던 화면 자리. 공개된 카드가 그 자리에서 뒤집혀 올라오게 쓴다.
+  // cardId를 같이 들고 있어야, 스택에서 다른 카드를 맨 앞으로 올릴 때 이 연출이 엉뚱하게 돌지 않는다.
+  const [flipFrom, setFlipFrom] = useState<{ cardId: string; fx: number; fy: number; fs: number } | null>(null);
+  // 현재 턴 플레이어의 스택 컨테이너. 새 카드가 들어갈 자리를 재는 데 쓴다.
+  const stackBoxRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!overlayCard) return;
@@ -281,10 +290,30 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
     };
   }, [phase]);
 
-  function flipCardAt(index: number) {
+  function flipCardAt(index: number, srcEl: HTMLElement | null) {
     const hand = hands[turn];
     if (!hand || index >= hand.length) return;
     const card = hand[index];
+    // 손패 카드(srcEl)와 새 카드가 들어갈 스택 자리를 실측해 차이를 CSS 변수로 넘긴다.
+    // 스택 자리의 top은 --stack-step * (이미 공개된 장수)로 정해져 있어 렌더 전에 계산할 수 있다.
+    const box = stackBoxRef.current;
+    if (srcEl && box) {
+      const cs = getComputedStyle(box);
+      const step = parseFloat(cs.getPropertyValue("--stack-step")) || 0;
+      const cardH = parseFloat(cs.getPropertyValue("--stack-card-h")) || 0;
+      const b = box.getBoundingClientRect();
+      const s = srcEl.getBoundingClientRect();
+      const dstCx = b.left + b.width / 2;
+      const dstCy = b.top + step * revealed[turn].length + cardH / 2;
+      setFlipFrom({
+        cardId: card.id,
+        fx: Math.round(s.left + s.width / 2 - dstCx),
+        fy: Math.round(s.top + s.height / 2 - dstCy),
+        fs: b.width ? Number((s.width / b.width).toFixed(3)) : 0.9,
+      });
+    } else {
+      setFlipFrom(null);
+    }
     const newHands = hands.map((h, i) => (i === turn ? h.filter((_, j) => j !== index) : h));
     setHands(newHands);
     setRevealed((prev) => prev.map((stack, i) => (i === turn ? [...stack, card] : stack)));
@@ -392,7 +421,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
           onClick={() => setShowGuide((v) => !v)}
           aria-expanded={showGuide}
           aria-label="등급이 정해지는 기준"
-          className="relative flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-sm leading-none font-bold text-zinc-300 ring-1 ring-white/20 transition-colors after:absolute after:top-1/2 after:left-1/2 after:size-11 after:-translate-x-1/2 after:-translate-y-1/2 after:content-[''] hover:bg-white/20"
+          className={`relative flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-sm leading-none font-bold text-zinc-300 ring-1 ring-white/20 transition-colors after:absolute after:top-1/2 after:left-1/2 after:size-11 after:-translate-x-1/2 after:-translate-y-1/2 after:content-[''] hover:bg-white/20 ${FOCUS_RING}`}
         >
           ?
         </button>
@@ -439,10 +468,12 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
     );
   }
 
-  // revealing/result 공용: 플레이어별 공개 스택. order로 열 순서를 바꿀 수 있다(결과 화면은 점수순).
+  // revealing/result 공용: 플레이어별 공개 스택. 열 순서는 두 화면 다 1P부터 그대로다
+  // (누가 뭘 뽑았는지 자리로 찾게 한다). 순위는 결과 화면 위쪽 순위표가 알려준다.
   // sm 미만에서는 인원수와 무관하게 2열로 감싸(4인=2x2, 3인=2+1, 2인=2x1), sm 이상에서는 인원수만큼 가로 배치.
   // 컨테이너 높이는 팩당 최대 장수(packSize) 기준으로 처음부터 고정해서, 카드를 뒤집어도 아래 요소가 안 밀린다.
-  function renderStacks(order: number[]) {
+  function renderStacks() {
+    const order = Array.from({ length: numPlayers }, (_, p) => p);
     return (
       <div
         className="grid grid-cols-2 items-start gap-3 sm:grid-cols-[repeat(var(--stack-cols),minmax(0,1fr))] sm:gap-4"
@@ -459,6 +490,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                 <div className="text-lg font-black tabular-nums">{score}</div>
               </div>
               <div
+                ref={p === turn ? stackBoxRef : null}
                 className="relative w-full max-w-[170px] [--stack-card-h:148px] [--stack-step:17px] sm:[--stack-card-h:340px] sm:[--stack-step:28px]"
                 style={{ height: `calc(var(--stack-step) * ${packSize - 1} + var(--stack-card-h))` }}
               >
@@ -467,7 +499,14 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                   const hoverCls =
                     "transition-[translate,scale,filter] duration-200 ease-out hover:-translate-y-[3px] hover:scale-[1.01] hover:brightness-105";
                   const isFront = i === stack.length - 1;
-                  const flipCls = isFront ? "animate-[flip-up_.5s_cubic-bezier(.2,.8,.2,1)_both]" : "";
+                  // 방금 손패에서 뒤집은 카드만 손패 자리에서 날아오는 연출을 쓴다.
+                  // 스택에서 뒤 카드를 맨 앞으로 올릴 때도 이 클래스가 붙는데, 그때는 실측값이
+                  // 없으므로(cardId가 다름) 제자리에서 뒤집히기만 한다.
+                  const flipSrc = flipFrom?.cardId === card.id ? flipFrom : null;
+                  const flipCls = isFront ? "animate-[flip-up_.55s_cubic-bezier(.2,.8,.2,1)_both]" : "";
+                  const flipStyle = flipSrc
+                    ? ({ "--fx": `${flipSrc.fx}px`, "--fy": `${flipSrc.fy}px`, "--fs": flipSrc.fs } as CSSProperties)
+                    : undefined;
                   return (
                     <div
                       key={card.id}
@@ -480,6 +519,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                         aria-label={isFront ? `${card.name} 자세히 보기` : `${card.name} 맨 앞으로`}
                         onClick={() => (isFront ? setOverlayCard(card) : bringToFront(p, card.id))}
                         className={`block w-full rounded-2xl text-left outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:hidden ${hoverCls} ${flipCls}`}
+                        style={flipStyle}
                       >
                         <PlayerCard card={card} sport={sport} size="mini" />
                       </button>
@@ -489,6 +529,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                         aria-label={`${card.name} 맨 앞으로`}
                         onClick={() => bringToFront(p, card.id)}
                         className={`hidden w-full rounded-2xl text-left outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:block ${hoverCls} ${flipCls}`}
+                        style={flipStyle}
                       >
                         <PlayerCard card={card} sport={sport} size="compact" />
                       </button>
@@ -512,9 +553,11 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
         className={`h-9 w-6 shrink-0 rounded-xs bg-gradient-to-br ring-1 ring-white/10 sm:h-12 sm:w-8 sm:rounded-sm ${PLAYERS[p].grad}`}
       />
     );
+    // w-11(44px)은 모바일 최소 터치 크기다. 게임에서 제일 많이 누르는 버튼이라 여기서 줄이지 않는다.
+    // 7장 × 44px + 간격 6 × 4px = 332px 로 375px 화면에 들어온다.
     const bigBack = (p: number) => (
       <div
-        className={`h-14 w-10 shrink-0 overflow-hidden rounded-sm bg-gradient-to-br ring-1 ring-white/10 sm:h-20 sm:w-14 sm:rounded-md ${PLAYERS[p].grad}`}
+        className={`h-14 w-11 shrink-0 overflow-hidden rounded-sm bg-gradient-to-br ring-1 ring-white/10 sm:h-20 sm:w-14 sm:rounded-md ${PLAYERS[p].grad}`}
       >
         <div className="h-1/3 w-full bg-gradient-to-b from-white/25 to-transparent" />
       </div>
@@ -535,16 +578,16 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
             --hand-dx는 자기 자리 열 중심까지의 가로 오프셋(전체 폭 기준 %). */}
         <div
           key={turn}
-          className="flex flex-nowrap items-end justify-center gap-1.5 animate-[hand-rise_.45s_cubic-bezier(.2,.8,.2,1)_both] [--hand-dy:70px] sm:gap-3 sm:[--hand-dy:96px]"
+          className="flex flex-nowrap items-end justify-center gap-1 animate-[hand-rise_.45s_cubic-bezier(.2,.8,.2,1)_both] [--hand-dy:70px] sm:gap-3 sm:[--hand-dy:96px]"
           style={{ "--hand-dx": `${(((turn + 0.5) / numPlayers - 0.5) * 100).toFixed(2)}%` } as CSSProperties}
         >
           {(hands[turn] ?? []).map((_, i) => (
             <button
               key={i}
               type="button"
-              onClick={() => flipCardAt(i)}
+              onClick={(e) => flipCardAt(i, e.currentTarget)}
               aria-label={`손패 카드 ${i + 1}번 뒤집기`}
-              className="shrink-0 rounded-sm transition-transform hover:-translate-y-1 active:scale-[0.96] sm:rounded-md"
+              className={`shrink-0 rounded-sm transition-transform hover:-translate-y-1 active:scale-[0.96] sm:rounded-md ${FOCUS_RING}`}
             >
               {bigBack(turn)}
             </button>
@@ -614,76 +657,55 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
     const finalUp = !battleAnim && !battleFinish && battleRound > 0 && isFinalRound(battleDecks);
     const rows = BATTLE_ROWS[numPlayers] ?? [Array.from({ length: numPlayers }, (_, p) => p)];
 
-    // 대결 카드 한 장. 대기 중엔 스택 맨 앞 카드, 진행 중엔 이번 판 카드를 자기 자리(p)에 그린다.
+    // 대결 카드 한 장. 대기 중엔 스택 맨 앞 카드, 판이 도는 중엔 이번 판 카드인데 둘은 같은 카드다.
+    // 그래서 DOM 구조를 한 갈래로 둔다. 갈래를 나누면 판이 시작될 때 카드가 다시 마운트돼
+    // 등장 연출이 한 번 더 돌고, 보는 쪽에서는 등장 → 재등장 → 충돌로 보인다.
     // 래퍼 폭 계산은 renderStacks와 같다(min-w-0 + flex-1 + max-w-170px) — grid justify-items로 인한
     // 폭 불일치를 피하려 일부러 grid 대신 flex를 쓴다.
     function battleCard(p: number) {
-      if (!battleAnim) {
-        const card = frontOf(battleDecks[p]);
-        if (!card) return null;
-        return (
-          <div key={p} className="flex min-w-0 flex-1 max-w-[170px] flex-col items-center gap-1">
-            <span className={`text-xs font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</span>
-            {/* renderStacks와 같은 규칙: sm 미만 mini, sm 이상 compact */}
-            <div className="w-full sm:hidden">
-              <PlayerCard key={card.id} card={card} sport={sport} size="mini" />
-            </div>
-            <div className="hidden w-full sm:block">
-              <PlayerCard key={card.id} card={card} sport={sport} size="compact" />
-            </div>
-          </div>
-        );
-      }
-      const entry = battleAnim.result.entries.find((e) => e.player === p);
-      if (!entry) return null;
-      const isWinner = battleAnim.result.winners.some((w) => w.player === p);
-      const judge = battleStage === "judge";
+      const anim = battleAnim;
+      const live = anim?.result.entries.find((e) => e.player === p);
+      const card = live?.card ?? frontOf(battleDecks[p]);
+      if (!card) return null;
       const dir = APPROACH_DIR[numPlayers]?.[p] ?? { x: 0, y: 0 };
-      const approachStyle = {
+      const clashStyle = {
         "--bx": `${dir.x * APPROACH_X}px`,
         "--by": `${dir.y * APPROACH_Y}px`,
       } as CSSProperties;
       const faceClass =
-        battleStage === "clash"
-          ? "animate-[battle-approach_.25s_ease-out_both]"
-          : judge
-            ? isWinner
-              ? "animate-[battle-win-glow_.4s_ease-in-out]"
-              : "animate-[battle-lose-shatter_.25s_ease-in_forwards]"
-            : "";
-      // 판정 결과는 카드 아래 문구 대신 카드 위 오버레이(테두리+틴트)로 표현한다. 자리를 차지하지 않아
-      // 배지가 붙고 빠질 때 아래 요소가 밀리지 않고, 애니메이션이 꺼져도(prefers-reduced-motion) 그대로 보인다.
-      // faceClass를 쓰는 div의 형제로 둬서, 그 div가 연출 끝에 opacity 0으로 끝나도 영향을 안 받는다.
-      const outcomeCls = !judge ? "" : isWinner ? "ring-2 ring-emerald-400/80" : "bg-black/50 ring-2 ring-red-500/70";
+        !anim || !live
+          ? ""
+          : battleStage === "clash"
+            ? "animate-[battle-clash_.35s_ease-in-out_both]"
+            : battleStage === "judge"
+              ? anim.result.winners.some((w) => w.player === p)
+                ? "animate-[battle-win-glow_.4s_ease-in-out]"
+                : "animate-[battle-lose-shatter_.25s_ease-in_forwards]"
+              : "";
+      // 등장(안쪽 div)과 충돌(바깥 div)을 다른 element에 나눠 건다. 한 element에 몰면 둘 중
+      // 하나만 돌아서 카드가 사라졌다 나타난다. 안쪽은 key로 카드가 바뀔 때만 다시 돌고,
+      // 길이는 다음 판까지의 간격(250ms)보다 짧게 잡아 충돌과 겹치지 않게 한다.
+      const face = (size: "mini" | "compact") => (
+        <div className={faceClass} style={clashStyle}>
+          <div key={card.id} className="animate-[card-in_.24s_cubic-bezier(.2,.8,.2,1)_both]">
+            <PlayerCard card={card} sport={sport} size={size} />
+          </div>
+        </div>
+      );
       return (
-        <div key={p} className="flex min-w-0 flex-1 max-w-[170px] flex-col items-center gap-1">
+        <div key={p} className="flex min-w-0 max-w-[170px] flex-1 flex-col items-center gap-1">
           <span className={`text-xs font-bold ${PLAYERS[p].text}`}>{PLAYERS[p].name}</span>
-          <div className="relative w-full sm:hidden">
-            <div className={faceClass} style={approachStyle}>
-              <PlayerCard card={entry.card} sport={sport} size="mini" />
-            </div>
-            {judge && (
-              <span aria-hidden="true" className={`pointer-events-none absolute inset-0 rounded-2xl ${outcomeCls}`} />
-            )}
-          </div>
-          <div className="relative hidden w-full sm:block">
-            <div className={faceClass} style={approachStyle}>
-              <PlayerCard card={entry.card} sport={sport} size="compact" />
-            </div>
-            {judge && (
-              <span aria-hidden="true" className={`pointer-events-none absolute inset-0 rounded-2xl ${outcomeCls}`} />
-            )}
-          </div>
-          {battleAnim.final && (
-            <span className="text-[10px] text-zinc-500 tabular-nums">활약도 {entry.card.rating.toFixed(1)}</span>
-          )}
+          {/* renderStacks와 같은 규칙: sm 미만 mini, sm 이상 compact */}
+          <div className="w-full sm:hidden">{face("mini")}</div>
+          <div className="hidden w-full sm:block">{face("compact")}</div>
         </div>
       );
     }
 
     return (
-      // 4인 2x2처럼 줄이 두 개가 되면 세로가 빡빡해져 gap/padding을 결과 화면보다 좁게 잡는다
-      // (카드 크기는 그대로 두고 여백만 줄인다 — 1440x950 안에 들어오도록 실측해 맞춘 값).
+      // 4인 2x2처럼 줄이 두 개가 되면 세로가 빡빡해져 결과 화면보다 좁게 잡는다.
+      // 카드 크기는 결과 화면과 똑같이 두고, 여백과 이름 라벨(text-sm→text-xs)만 한 단계 줄인다.
+      // 1440x950 안에 들어오도록 실측해 맞춘 값이라 그냥 키우면 세로 스크롤이 생긴다.
       <div className="flex min-h-[80vh] flex-col justify-between gap-2 py-2 sm:gap-3 sm:py-2">
         {renderRemainingHands()}
 
@@ -718,14 +740,14 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
               <button
                 type="button"
                 onClick={() => setPhase("result")}
-                className="rounded-xl bg-white px-4 py-1.5 text-sm font-bold text-zinc-950 transition-[background-color,scale] hover:bg-zinc-200 active:scale-[0.96]"
+                className={`rounded-xl bg-white px-4 py-1.5 text-sm font-bold text-zinc-950 transition-[background-color,scale] hover:bg-zinc-200 active:scale-[0.96] ${FOCUS_RING}`}
               >
                 결과로 돌아가기
               </button>
               <button
                 type="button"
                 onClick={resetGame}
-                className="rounded-xl bg-white/10 px-4 py-1.5 text-sm font-bold text-zinc-200 transition-[background-color,scale] hover:bg-white/20 active:scale-[0.96]"
+                className={`rounded-xl bg-white/10 px-4 py-1.5 text-sm font-bold text-zinc-200 ring-1 ring-white/15 transition-[background-color,scale] hover:bg-white/20 active:scale-[0.96] ${FOCUS_RING}`}
               >
                 다시하기
               </button>
@@ -734,12 +756,21 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
         ) : (
           <>
             <div className="flex flex-1 flex-col items-center justify-center gap-3">
-              {/* 이 줄은 내용이 없어도 자리를 지킨다. 조건부로 붙였다 빼면 카드 대열이 위아래로 밀린다. */}
-              <div className="flex h-7 items-center justify-center">
+              {/* 이 줄은 내용이 없어도 자리를 지킨다. 조건부로 붙였다 빼면 카드 대열이 위아래로 밀린다.
+                  막배틀의 활약도도 카드 아래가 아니라 여기 적는다. 카드마다 한 줄씩 붙이면
+                  4인 2x2에서 세로가 33px 넘쳤다(실측). truncate로 줄바꿈도 막는다. */}
+              <div className="flex h-7 items-center justify-center overflow-hidden">
                 {battleAnim && battleStage === "judge" && battleAnim.result.draw ? (
                   <p className="text-center text-lg font-black text-zinc-200">무승부</p>
                 ) : battleAnim?.final ? (
-                  <p className="text-center text-xs font-bold tracking-wide text-amber-400 uppercase">마지막 승부</p>
+                  <p className="truncate text-center text-xs font-bold tracking-wide text-amber-400 uppercase">
+                    마지막 승부
+                    <span className="ml-2 font-medium text-zinc-400 normal-case tabular-nums">
+                      {battleAnim.result.entries
+                        .map((e) => `${PLAYERS[e.player].name} ${e.card.rating.toFixed(1)}`)
+                        .join(" · ")}
+                    </span>
+                  </p>
                 ) : null}
               </div>
               <p aria-live="polite" className="sr-only">
@@ -755,8 +786,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                 {battleAnim && battleStage === "clash" && (
                   <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 m-auto h-20 w-20 animate-[battle-flash_.2s_ease-out_both] rounded-full bg-white/70 blur-md"
-                    style={{ animationDelay: "140ms" }}
+                    className="pointer-events-none absolute inset-0 m-auto h-20 w-20 animate-[battle-flash_.2s_ease-out_.17s_both] rounded-full bg-white/70 blur-md"
                   />
                 )}
               </div>
@@ -771,7 +801,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
             <button
               type="button"
               onClick={() => setPhase("result")}
-              className="self-center rounded-xl bg-white/10 px-4 py-1.5 text-sm font-bold text-zinc-300 ring-1 ring-white/15 transition-[background-color,scale] hover:bg-white/20 active:scale-[0.96]"
+              className={`self-center rounded-xl bg-white/10 px-4 py-1.5 text-sm font-bold text-zinc-300 ring-1 ring-white/15 transition-[background-color,scale] hover:bg-white/20 active:scale-[0.96] ${FOCUS_RING}`}
             >
               그만두고 결과로
             </button>
@@ -808,7 +838,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                   type="button"
                   onClick={() => setNumPlayers(n)}
                   aria-pressed={numPlayers === n}
-                  className={`w-16 rounded-xl py-3 font-bold transition-colors ${
+                  className={`w-16 rounded-xl py-3 font-bold transition-colors ${FOCUS_RING} ${
                     numPlayers === n ? "bg-white text-zinc-950" : "bg-white/5 text-zinc-300 hover:bg-white/10"
                   }`}
                 >
@@ -827,7 +857,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                   type="button"
                   onClick={() => setPackSize(n)}
                   aria-pressed={packSize === n}
-                  className={`w-16 rounded-xl py-3 font-bold transition-colors ${
+                  className={`w-16 rounded-xl py-3 font-bold transition-colors ${FOCUS_RING} ${
                     packSize === n ? "bg-white text-zinc-950" : "bg-white/5 text-zinc-300 hover:bg-white/10"
                   }`}
                 >
@@ -840,7 +870,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
           <button
             type="button"
             onClick={startGame}
-            className="w-full rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 py-3.5 font-bold text-zinc-950 transition-[filter,scale] hover:brightness-110 active:scale-[0.96]"
+            className={`w-full rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 py-3.5 font-bold text-zinc-950 transition-[filter,scale] hover:brightness-110 active:scale-[0.96] ${FOCUS_RING}`}
           >
             시작
           </button>
@@ -862,8 +892,8 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
                 disabled={owner !== null}
                 onClick={() => pickSlot(slot)}
                 aria-label={owner === null ? `카드팩 ${slot + 1}번 고르기` : `${PLAYERS[owner].name}의 카드팩`}
-                className={`relative aspect-[10/19] w-20 shrink-0 transition-transform sm:w-28 ${
-                  owner === null ? "hover:scale-105 active:scale-[0.96]" : ""
+                className={`relative aspect-[10/19] w-20 shrink-0 rounded-lg transition-transform sm:w-28 ${FOCUS_RING} ${
+                  owner === null ? "hover:scale-105 active:scale-[0.96]" : "cursor-not-allowed"
                 }`}
               >
                 <PackShell dim={owner !== null} />
@@ -945,7 +975,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
             {PLAYERS[turn].name} 차례 — 카드를 뒤집어주세요
           </p>
 
-          {renderStacks(Array.from({ length: numPlayers }, (_, p) => p))}
+          {renderStacks()}
 
           {renderHands()}
         </div>
@@ -971,15 +1001,16 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
             ))}
           </div>
 
-          {/* 순위표는 점수순이지만 스택은 1P부터 그대로 둔다(누가 뭘 뽑았는지 자리로 찾게) */}
-          {renderStacks(Array.from({ length: numPlayers }, (_, p) => p))}
+          {renderStacks()}
 
           {/* 결과를 보고 다음 행동을 고르는 순서라, 버튼은 스택 아래로 둔다(대결 종료 화면과 같은 배치) */}
           <div className="flex flex-wrap justify-center gap-3">
             <button
               type="button"
               onClick={resetGame}
-              className="rounded-xl bg-white px-4 py-1.5 text-sm font-bold text-zinc-950 transition-[background-color,scale] hover:bg-zinc-200 active:scale-[0.96]"
+              /* 다시하기는 어느 화면에서든 보조 행동이다. 주 행동(대결하기·결과로 돌아가기)과
+                 무게가 같으면 뭘 먼저 누를지가 안 보인다. */
+              className={`rounded-xl bg-white/10 px-4 py-1.5 text-sm font-bold text-zinc-200 ring-1 ring-white/15 transition-[background-color,scale] hover:bg-white/20 active:scale-[0.96] ${FOCUS_RING}`}
             >
               다시하기
             </button>
@@ -987,7 +1018,7 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
               type="button"
               onClick={startBattle}
               disabled={survivorsOf(revealed).length < 2}
-              className="rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-1.5 text-sm font-bold text-zinc-950 transition-[filter,scale] hover:brightness-110 active:scale-[0.96] disabled:opacity-40"
+              className={`rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-1.5 text-sm font-bold text-zinc-950 transition-[filter,scale] hover:brightness-110 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS_RING}`}
             >
               대결하기
             </button>
@@ -1017,7 +1048,9 @@ export default function Game({ pool, sport: sportKey }: { pool: Card[]; sport: S
             >
               ×
             </button>
-            <PlayerCard card={overlayCard} sport={sport} size="full" />
+            <div className="animate-[card-in_.5s_cubic-bezier(.2,.8,.2,1)_both]">
+              <PlayerCard card={overlayCard} sport={sport} size="full" />
+            </div>
           </div>
         </div>
       )}
