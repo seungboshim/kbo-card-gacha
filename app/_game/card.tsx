@@ -4,42 +4,52 @@ import Image from "next/image";
 import { useState } from "react";
 import { TIERS, type Card, type SportConfig, type TierKey } from "./deck";
 
-// 등급 표현은 세 갈래로 나눈다.
-// edge: 테두리 색 · glow: 바깥 광원(상위 3등급만) · pad: 테두리 두께
-// 색만으로 가르면 mini 카드나 저채도 화면에서 구분이 흐려져서, 두께로 한 겹 더 준다.
+// 등급 표현. 색 순서는 회색 → 파랑 → 보라 → 금색 → 백금(홀로그램)이다.
+// edge: 테두리 배경(그라디언트 방향까지 포함) · glow: 바깥 광원 · pad: 테두리 두께
+// sheen: 사진 뒤에 깔리는 무지개빛 박막. 레전드만 쓴다.
+//
+// 레전드를 색으로만 가르면 언커먼 파랑과 톤이 겹친다. 그래서 색이 아니라 질감으로 가른다.
 // chip 배경은 등급색이 아니라 어두운 단색이다. 배지가 팀 색 사진 위에 얹히기 때문에
 // 반투명 등급색으로 두면 밝은 팀(울버햄튼 금색 등) 위에서 글자가 묻힌다.
-export const STYLE: Record<TierKey, { edge: string; glow: string; pad: string; chip: string; label: string }> = {
+export const STYLE: Record<
+  TierKey,
+  { edge: string; glow: string; pad: string; chip: string; label: string; sheen?: string }
+> = {
   LEGEND: {
-    edge: "from-amber-200 via-yellow-400 to-orange-600",
-    glow: "shadow-[0_0_40px_-4px_rgba(251,191,36,0.65)]",
-    pad: "p-[2px]",
-    chip: "bg-zinc-950/70 text-amber-300 ring-amber-400/50",
-    label: "text-amber-300",
+    // 반복 그라디언트라야 좁은 테두리 안에 색이 여러 개 동시에 보인다. 한 번만 흐르는
+    // 그라디언트로 두면 2.5px 폭에 색 하나만 걸려서 그냥 흐린 은색이 된다.
+    edge: "bg-[repeating-linear-gradient(115deg,#5eead4_0px,#ffffff_13px,#f0abfc_26px,#a78bfa_39px,#67e8f9_52px,#ffffff_65px,#5eead4_78px)] bg-[length:200%_200%] animate-[holo-drift_6s_ease-in-out_infinite]",
+    glow: "shadow-[0_0_44px_-4px_rgba(150,240,255,0.7)]",
+    pad: "p-[2.5px]",
+    chip: "bg-zinc-950/70 text-cyan-100 ring-cyan-200/60",
+    label: "text-cyan-200",
+    // 흰색을 줄이고 색 띠를 살린다. 흰색이 많으면 어두운 팀 색 위에서 회색 얼룩처럼 보인다.
+    sheen:
+      "bg-[repeating-linear-gradient(115deg,rgba(120,255,235,0.44)_0px,rgba(255,255,255,0.26)_26px,rgba(255,170,235,0.42)_52px,rgba(160,170,255,0.42)_78px,rgba(120,220,255,0.44)_104px,rgba(120,255,235,0.44)_130px)] bg-[length:200%_200%] animate-[holo-drift_6s_ease-in-out_infinite]",
   },
   EPIC: {
-    edge: "from-fuchsia-300 via-purple-500 to-indigo-600",
-    glow: "shadow-[0_0_32px_-6px_rgba(192,132,252,0.6)]",
+    edge: "bg-gradient-to-br from-yellow-200 via-amber-400 to-yellow-600",
+    glow: "shadow-[0_0_34px_-5px_rgba(250,204,21,0.6)]",
     pad: "p-[2px]",
-    chip: "bg-zinc-950/70 text-fuchsia-300 ring-fuchsia-400/50",
-    label: "text-fuchsia-300",
+    chip: "bg-zinc-950/70 text-yellow-300 ring-yellow-400/50",
+    label: "text-yellow-300",
   },
   RARE: {
-    edge: "from-sky-300 via-blue-500 to-cyan-500",
-    glow: "shadow-[0_0_28px_-8px_rgba(56,189,248,0.55)]",
+    edge: "bg-gradient-to-br from-violet-300 via-purple-500 to-purple-700",
+    glow: "shadow-[0_0_28px_-8px_rgba(168,85,247,0.55)]",
     pad: "p-[1.5px]",
+    chip: "bg-zinc-950/70 text-purple-300 ring-purple-400/50",
+    label: "text-purple-300",
+  },
+  UNCOMMON: {
+    edge: "bg-gradient-to-br from-sky-300 via-blue-500 to-blue-700",
+    glow: "",
+    pad: "p-[1px]",
     chip: "bg-zinc-950/70 text-sky-300 ring-sky-400/50",
     label: "text-sky-300",
   },
-  UNCOMMON: {
-    edge: "from-emerald-300 via-green-500 to-teal-600",
-    glow: "",
-    pad: "p-[1px]",
-    chip: "bg-zinc-950/70 text-emerald-300 ring-emerald-400/50",
-    label: "text-emerald-300",
-  },
   COMMON: {
-    edge: "from-zinc-500 via-slate-600 to-zinc-700",
+    edge: "bg-gradient-to-br from-zinc-500 via-slate-600 to-zinc-700",
     glow: "",
     pad: "p-[1px]",
     chip: "bg-zinc-950/70 text-zinc-400 ring-zinc-500/50",
@@ -79,7 +89,7 @@ export function PlayerCard({
   const teamColor = sport.teamColor[card.teamId] ?? NEUTRAL_TEAM_COLOR;
   return (
     // 등장 연출은 호출부가 정한다. 여기서 무조건 걸면 카드가 다시 마운트될 때마다 또 돈다.
-    <div className={`rounded-2xl bg-gradient-to-br ${s.pad} ${s.edge} ${s.glow}`}>
+    <div className={`rounded-2xl ${s.pad} ${s.edge} ${s.glow}`}>
       <div className="flex h-full flex-col overflow-hidden rounded-[14px] bg-zinc-950">
         {/* 팀 색은 사진 배경에서만 뚜렷하게: 흰색 글로스 위에 팀 색을 진하게 깔고 아래로 갈수록 죽인다 */}
         <div
@@ -88,6 +98,8 @@ export function PlayerCard({
             backgroundImage: `linear-gradient(to bottom, rgba(255,255,255,0.1), transparent), linear-gradient(160deg, ${teamColor}e6 0%, ${teamColor}4d 65%, transparent 100%)`,
           }}
         >
+          {/* 무지개빛 박막. 선수 사진보다 먼저 그려서 사진 뒤에 깔린다(테두리와 같은 리듬으로 흐른다). */}
+          {s.sheen && <span aria-hidden="true" className={`pointer-events-none absolute inset-0 ${s.sheen}`} />}
           <span
             className={`absolute top-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${s.chip}`}
           >

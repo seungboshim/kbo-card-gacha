@@ -187,6 +187,19 @@ body {
   }
 }
 
+/* 레전드(백금) 카드의 무지개빛이 천천히 흐르는 연출. 다른 등급은 색 하나로 가는데
+   레전드만 질감으로 갈라서, 파랑(언커먼)과 톤이 겹치지 않게 한다.
+   background-position만 움직여서 자리에는 영향이 없다. */
+@keyframes holo-drift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
