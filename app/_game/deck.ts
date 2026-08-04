@@ -3,13 +3,20 @@
 
 export type TierKey = "LEGEND" | "EPIC" | "RARE" | "UNCOMMON" | "COMMON";
 
-/** 역할군 내 상위 누적 비율(pct)까지 해당 등급. rate는 뽑기 확률(%, 합계 100), score는 게임 점수. */
+/**
+ * 역할군 내 상위 누적 비율(pct)까지 해당 등급. rate는 뽑기 확률(%, 합계 100), score는 게임 점수.
+ *
+ * pct와 rate는 함께 움직여야 한다. rate는 등급이 나올 확률이고 그 안에서는 균등하게 고르므로,
+ * 카드 한 장이 나올 확률은 rate/인원이다. pct만 늘리면 그 등급 인원이 불어나 장당 확률이 떨어지고,
+ * 레어가 에픽보다 귀해지는 역전이 생긴다. 지금 값은 EPL/KBO 양쪽 풀에서 장당 확률이
+ * 레전드 < 에픽 < 레어 < 언커먼 < 커먼 순서를 유지하도록 맞춘 것이다.
+ */
 export const TIERS: readonly { key: TierKey; label: string; pct: number; rate: number; score: number }[] = [
   { key: "LEGEND", label: "레전드", pct: 0.03, rate: 1, score: 100 },
   { key: "EPIC", label: "에픽", pct: 0.1, rate: 4, score: 45 },
-  { key: "RARE", label: "레어", pct: 0.25, rate: 12, score: 18 },
-  { key: "UNCOMMON", label: "언커먼", pct: 0.55, rate: 30, score: 7 },
-  { key: "COMMON", label: "커먼", pct: 1, rate: 53, score: 2 },
+  { key: "RARE", label: "레어", pct: 0.35, rate: 18, score: 18 },
+  { key: "UNCOMMON", label: "언커먼", pct: 0.65, rate: 25, score: 7 },
+  { key: "COMMON", label: "커먼", pct: 1, rate: 52, score: 2 },
 ];
 
 export type Card = {
@@ -94,7 +101,9 @@ export function assignTiers(cards: Omit<Card, "tier">[]): Card[] {
   const n = sorted.length;
   return sorted.map((c, i) => {
     const p = (i + 1) / n;
-    const tier = (TIERS.find((t) => p <= t.pct) ?? TIERS[TIERS.length - 1]).key;
+    // 34명 미만이면 1위의 백분위(1/n)가 이미 3%를 넘어 레전드가 한 명도 안 나온다.
+    // 골키퍼(22명)나 공격수(29명)처럼 작은 역할군이 통째로 레전드를 잃으므로 1위는 항상 레전드로 둔다.
+    const tier: TierKey = i === 0 ? "LEGEND" : (TIERS.find((t) => p <= t.pct) ?? TIERS[TIERS.length - 1]).key;
     return { ...c, tier };
   });
 }

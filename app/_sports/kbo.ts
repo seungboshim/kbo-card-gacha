@@ -33,10 +33,15 @@ export const KBO: SportConfig = {
   teamColor: TEAM_COLOR,
   miniStatKeys: (role) => (role === "타자" ? ["타율", "WAR"] : ["ERA", "WAR"]),
   guide: {
-    pool: `${SEASON} 시즌 기록 중 최소 출전을 넘긴 선수만 나와요. 타자 50타석, 선발 20이닝, 불펜 15이닝.`,
-    tier: "역할군(타자·선발·불펜) 안에서 WAR 순위로 갈라요. 그래서 마무리투수도 레전드가 될 수 있어요.",
+    pool: `${SEASON} 시즌 기록 중 최소 출전을 넘긴 선수만 나와요. 팀 경기수에 비례해서 타자는 경기당 1.2타석, 선발은 0.3이닝, 불펜은 0.2이닝이 기준이에요.`,
+    tier: "역할군(타자·선발·불펜) 안에서 순위로 갈라요. 그래서 마무리투수도 레전드가 될 수 있어요. 투수는 WAR 그대로, 타자는 WAR과 타격 성적을 반씩 봐요.",
   },
 };
+
+// 최소 출전 기준. 시즌 진행률을 따라가도록 팀 경기수에 비례해서 잡는다.
+// 규정타석(경기×3.1) / 규정이닝(경기×1.0)보다 훨씬 느슨하게 둬서 시즌 초에도 풀이 비지 않게 한다.
+const MIN_PA_PER_GAME = 1.2;
+const MIN_IP_PER_GAME = { 선발: 0.3, 불펜: 0.2 } as const;
 
 type Row = Record<string, unknown>;
 
@@ -86,11 +91,47 @@ function baseCard(row: Row, role: Role, rating: number): Omit<Card, "tier" | "he
   };
 }
 
-function toHitter(row: Row): Omit<Card, "tier"> {
+/** 타석. 응답에 PA 필드가 없어 타수+볼넷+몸에맞는공으로 계산한다. */
+export function plateApp(row: Row): number {
+  return (num(row.hitterAb) ?? 0) + (num(row.hitterBb) ?? 0) + (num(row.hitterHp) ?? 0);
+}
+
+/** 리그 평균 wOBA. 타석으로 가중해 구한다. */
+export function leagueWoba(rows: Row[]): number {
+  let weighted = 0;
+  let total = 0;
+  for (const row of rows) {
+    const pa = plateApp(row);
+    weighted += (num(row.hitterWoba) ?? 0) * pa;
+    total += pa;
+  }
+  return total > 0 ? weighted / total : 0;
+}
+
+/**
+ * 타격만 뽑아낸 WAR 근사. wOBA로 리그 평균 대비 득점 기여를 구하고 대체 수준을 더해 승수로 바꾼다.
+ * (wOBA scale 1.2, 대체 수준 0.03런/타석, 득점당 10점)
+ *
+ * 응답에 수비 기록이 없어 hitterWar에서 수비를 뺄 수는 없다. 그래서 타격분을 따로 만들어 섞는다.
+ * hitterWar만 쓰면 수비 좋은 중견수·유격수가 카드에 보이는 타격 기록과 어긋나게 높은 등급을 받는다
+ * (김호령: 타율 .271 wRC+ 104인데 WAR 2.97로 에픽).
+ *
+ * 한계: 스탯티즈 oWAR과 달리 포지션 조정이 안 들어간다. 세부 포지션을 응답이 주지 않아서인데
+ * (내야수/외야수/포수까지만 온다), 그만큼 유격수·2루수·포수가 낮게, 지명타자·1루수가 높게 잡힌다.
+ * 실측 차이는 유격수 -1.4에서 지명타자 +0.7 사이. WAR을 절반 섞어 이 편향을 눌렀다.
+ */
+export function offensiveWar(row: Row, lgWoba: number): number {
+  const pa = plateApp(row);
+  const woba = num(row.hitterWoba) ?? lgWoba;
+  return (((woba - lgWoba) / 1.2) * pa + 0.03 * pa) / 10;
+}
+
+function toHitter(row: Row, lgWoba: number): Omit<Card, "tier"> {
   const war = num(row.hitterWar) ?? 0;
   const games = num(row.hitterGameCount) ?? 0;
+  const rating = 0.5 * offensiveWar(row, lgWoba) + 0.5 * war;
   return {
-    ...baseCard(row, "타자", war),
+    ...baseCard(row, "타자", rating),
     headline: `${games}경기 · 타율 ${avg(row.hitterHra)}`,
     stats: [
       { k: "타율", v: avg(row.hitterHra) },
@@ -174,12 +215,14 @@ export function parseInnings(raw: unknown): number {
 export async function getKboPool(): Promise<Card[]> {
   const [hitterRows, pitcherRows] = await Promise.all([fetchStats("HITTER"), fetchStats("PITCHER")]);
 
-  // 타자: 최소 출전 기준 PA >= 50 (응답에 PA 필드가 없어 타수+볼넷+몸에맞는공으로 계산)
-  const hitters = hitterRows
-    .filter((r) => (num(r.hitterAb) ?? 0) + (num(r.hitterBb) ?? 0) + (num(r.hitterHp) ?? 0) >= 50)
-    .map(toHitter);
+  // 팀 경기수: 응답이 따로 주지 않아 최다 출전 경기수로 근사한다. 매 경기 나오는 선수가 팀마다 있다.
+  // 시즌 시작 전이면 0이 되어 커트도 0이 된다(전원 통과).
+  const teamGames = Math.max(0, ...hitterRows.map((r) => num(r.hitterGameCount) ?? 0));
+  const lgWoba = leagueWoba(hitterRows);
 
-  // 투수: 경기당 이닝 3 이상이면 선발, 미만이면 불펜. 최소 이닝은 선발 20 / 불펜 15.
+  const hitters = hitterRows.filter((r) => plateApp(r) >= teamGames * MIN_PA_PER_GAME).map((r) => toHitter(r, lgWoba));
+
+  // 투수: 경기당 이닝 3 이상이면 선발, 미만이면 불펜.
   const starters: Omit<Card, "tier">[] = [];
   const relievers: Omit<Card, "tier">[] = [];
   for (const row of pitcherRows) {
@@ -187,8 +230,7 @@ export async function getKboPool(): Promise<Card[]> {
     const games = num(row.pitcherGameCount) ?? 0;
     const ipPerGame = games > 0 ? ip / games : 0;
     const role: "선발" | "불펜" = ipPerGame >= 3 ? "선발" : "불펜";
-    const minIp = role === "선발" ? 20 : 15;
-    if (ip >= minIp) (role === "선발" ? starters : relievers).push(toPitcher(row, role, ip));
+    if (ip >= teamGames * MIN_IP_PER_GAME[role]) (role === "선발" ? starters : relievers).push(toPitcher(row, role, ip));
   }
 
   // 등급은 역할군(타자/선발/불펜) 내 WAR 백분위로 각각 매긴다.

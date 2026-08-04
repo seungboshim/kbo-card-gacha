@@ -54,16 +54,25 @@ test("이닝 문자열 파싱", () => {
 });
 
 test("역할군 내 백분위로 등급이 의도한 인원수로 나뉜다", () => {
-  // 100명이면 누적 pct(3/10/25/55/100%) 그대로 3/7/15/30/45명으로 갈린다.
+  // 100명이면 누적 pct(3/10/35/65/100%) 그대로 3/7/25/30/35명으로 갈린다.
   const cards = Array.from({ length: 100 }, (_, i) => card(String(i), 100 - i));
   const tiered = assignTiers(cards);
   const count: Record<string, number> = {};
   for (const c of tiered) count[c.tier] = (count[c.tier] ?? 0) + 1;
   assert.equal(count.LEGEND, 3);
   assert.equal(count.EPIC, 7);
-  assert.equal(count.RARE, 15);
+  assert.equal(count.RARE, 25);
   assert.equal(count.UNCOMMON, 30);
-  assert.equal(count.COMMON, 45);
+  assert.equal(count.COMMON, 35);
+});
+
+test("34명 미만 역할군도 1위는 레전드가 된다", () => {
+  // 22명이면 1위 백분위가 1/22 = 4.5%라 3% 컷에 안 걸린다. 골키퍼 풀이 이 크기다.
+  for (const n of [22, 29, 33]) {
+    const tiered = assignTiers(Array.from({ length: n }, (_, i) => card(String(i), n - i)));
+    assert.equal(tiered[0].tier, "LEGEND", `${n}명 풀의 1위`);
+    assert.equal(tiered.filter((c) => c.tier === "LEGEND").length, 1, `${n}명 풀의 레전드 수`);
+  }
 });
 
 test("확률대로 등급이 뽑힌다", () => {
@@ -107,12 +116,12 @@ test("EPL: 포지션별 rating 순서가 의도대로 나온다", () => {
   const rows = [
     { playerId: "g1", playerName: "G1", position: "GK", minsPlayed: 700, cleanSheets: 19, saves: 0 },
     { playerId: "g2", playerName: "G2", position: "GK", minsPlayed: 700, cleanSheets: 10, saves: 100 },
-    { playerId: "d1", playerName: "D1", position: "DF", minsPlayed: 1000, cleanSheets: 17, goals: 3, assists: 4 },
-    { playerId: "d2", playerName: "D2", position: "DF", minsPlayed: 1000, cleanSheets: 10, goals: 0, assists: 5 },
-    { playerId: "m1", playerName: "M1", position: "MF", minsPlayed: 1000, goals: 9, assists: 21, keyPasses: 0 },
-    { playerId: "m2", playerName: "M2", position: "MF", minsPlayed: 1000, goals: 15, assists: 4, keyPasses: 0 },
-    { playerId: "f1", playerName: "F1", position: "FW", minsPlayed: 1000, goals: 27, assists: 8 },
-    { playerId: "f2", playerName: "F2", position: "FW", minsPlayed: 1000, goals: 22, assists: 1 },
+    { playerId: "d1", playerName: "D1", position: "DF", minsPlayed: 2000, cleanSheets: 17, goals: 3, assists: 4 },
+    { playerId: "d2", playerName: "D2", position: "DF", minsPlayed: 2000, cleanSheets: 10, goals: 0, assists: 5 },
+    { playerId: "m1", playerName: "M1", position: "MF", minsPlayed: 2000, goals: 9, assists: 21, keyPasses: 0 },
+    { playerId: "m2", playerName: "M2", position: "MF", minsPlayed: 2000, goals: 15, assists: 4, keyPasses: 0 },
+    { playerId: "f1", playerName: "F1", position: "FW", minsPlayed: 2000, goals: 27, assists: 8 },
+    { playerId: "f2", playerName: "F2", position: "FW", minsPlayed: 2000, goals: 22, assists: 1 },
   ];
   const pool = computeEplPool(rows);
   const byRole = (role: string) => pool.filter((c) => c.role === role);
@@ -123,7 +132,7 @@ test("EPL: 포지션별 rating 순서가 의도대로 나온다", () => {
 });
 
 test("EPL: 미드필더 활약도에 볼 회수 기여가 들어간다", () => {
-  const base = { position: "MF", minsPlayed: 1000 };
+  const base = { position: "MF", minsPlayed: 2000 };
   const rows = [
     // 공격 포인트만 보면 공격형이 앞서지만, 수비 기여를 더하면 수비형이 앞선다
     { ...base, playerId: "att", playerName: "공격형", goals: 4, assists: 5, keyPasses: 58, accurateTackles: 2, interceptions: 2, recoveries: 20 },
@@ -136,7 +145,7 @@ test("EPL: 미드필더 활약도에 볼 회수 기여가 들어간다", () => {
 
 test("EPL: 스탯 8칸이 모두 실제 기록이고 평점 칸이 없다", () => {
   const rows = [
-    { playerId: "f1", playerName: "F1", position: "FW", minsPlayed: 1000, goals: 27, expectedGoals: 25.4, assists: 8 },
+    { playerId: "f1", playerName: "F1", position: "FW", minsPlayed: 2000, goals: 27, expectedGoals: 25.4, assists: 8 },
     { playerId: "g1", playerName: "G1", position: "GK", minsPlayed: 700, cleanSheets: 5, saves: 90, goalsConceded: 30 },
   ];
   const pool = computeEplPool(rows);
@@ -153,16 +162,16 @@ test("EPL: 스탯 8칸이 모두 실제 기록이고 평점 칸이 없다", () =
   assert.equal(gk.stats.find((s) => s.k === "선방률")!.v, "75%"); // 90 / (90+30)
 });
 
-test("EPL: 최소 출전 필터가 GK 600 / 나머지 900으로 갈린다", () => {
+test("EPL: 최소 출전 필터가 GK 600 / 나머지 1500으로 갈린다", () => {
   const rows = [
     { playerId: "g-in", playerName: "GIn", position: "GK", minsPlayed: 600, cleanSheets: 1 },
     { playerId: "g-out", playerName: "GOut", position: "GK", minsPlayed: 599, cleanSheets: 1 },
-    { playerId: "d-in", playerName: "DIn", position: "DF", minsPlayed: 900, cleanSheets: 1 },
-    { playerId: "d-out", playerName: "DOut", position: "DF", minsPlayed: 899, cleanSheets: 1 },
-    { playerId: "m-in", playerName: "MIn", position: "MF", minsPlayed: 900, goals: 1 },
-    { playerId: "m-out", playerName: "MOut", position: "MF", minsPlayed: 899, goals: 1 },
-    { playerId: "f-in", playerName: "FIn", position: "FW", minsPlayed: 900, goals: 1 },
-    { playerId: "f-out", playerName: "FOut", position: "FW", minsPlayed: 899, goals: 1 },
+    { playerId: "d-in", playerName: "DIn", position: "DF", minsPlayed: 1500, cleanSheets: 1 },
+    { playerId: "d-out", playerName: "DOut", position: "DF", minsPlayed: 1499, cleanSheets: 1 },
+    { playerId: "m-in", playerName: "MIn", position: "MF", minsPlayed: 1500, goals: 1 },
+    { playerId: "m-out", playerName: "MOut", position: "MF", minsPlayed: 1499, goals: 1 },
+    { playerId: "f-in", playerName: "FIn", position: "FW", minsPlayed: 1500, goals: 1 },
+    { playerId: "f-out", playerName: "FOut", position: "FW", minsPlayed: 1499, goals: 1 },
   ];
   const ids = new Set(computeEplPool(rows).map((c) => c.id));
   assert.ok(ids.has("g-in") && !ids.has("g-out"));
