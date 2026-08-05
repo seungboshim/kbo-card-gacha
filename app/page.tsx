@@ -74,9 +74,19 @@ export default function Home() {
                   {inner}
                 </Link>
               ) : (
-                <div key={sport} aria-disabled="true" className={`${shell} opacity-40`} style={style}>
+                // div 에 aria-disabled 를 걸면 스크린리더가 아무것도 안 읽는다. 기본 role 이
+                // generic 이라 상태를 실을 자리가 없기 때문이다. disabled 버튼은 role 도
+                // 상태도 붙고 Tab 에서도 저절로 빠진다.
+                <button
+                  key={sport}
+                  type="button"
+                  disabled
+                  aria-label={`${SPORT[sport].name} 혼자서 · 곧 열려요`}
+                  className={`${shell} opacity-40`}
+                  style={style}
+                >
                   {inner}
-                </div>
+                </button>
               );
             })}
           </div>

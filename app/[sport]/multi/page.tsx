@@ -24,7 +24,10 @@ export default async function Page({ params }: { params: Promise<{ sport: string
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center gap-8 px-4 py-10">
       <div>
-        <Link href="/" className="text-sm text-zinc-500 transition-colors hover:text-zinc-300">
+        <Link
+          href="/"
+          className="rounded text-sm text-zinc-500 transition-colors outline-none hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-white/70"
+        >
           ← 카드깡
         </Link>
         <h1 className="mt-3 text-2xl font-black tracking-tight">

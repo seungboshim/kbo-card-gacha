@@ -142,7 +142,6 @@ export const EPL: SportConfig = {
   key: "epl",
   title: "프리미어리그 카드깡",
   seasonLabel: "25/26",
-  emblem: "⚽",
   packSub: "25/26 EPL",
   teamColor: TEAM_COLOR,
   miniStatKeys: (role) => MINI_STATS[role as Role] ?? ["골", "도움"],
