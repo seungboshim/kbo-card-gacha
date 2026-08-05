@@ -89,24 +89,36 @@ export function drawOne(
   let roll = rnd() * TIERS.reduce((s, t) => s + rates[t.key], 0);
   for (const t of TIERS) {
     roll -= rates[t.key];
+    // 확률 0 인 등급은 흘려보낼 곳으로도 안 쓴다. roll 이 한 번 음수가 되면 그 뒤 등급이
+    // 전부 조건을 통과하므로, 여기서 안 막으면 0% 로 적어둔 등급이 그대로 새어 나온다.
+    if (rates[t.key] <= 0) continue;
     const bucket = byTier[t.key];
     if (roll < 0 && bucket.length) return bucket[Math.floor(rnd() * bucket.length) % bucket.length];
   }
+  // 흘러내릴 곳이 없으면 아래에서부터 아무 등급이나 잡는다. 이때도 확률 0 인 등급은 건너뛴다.
+  // 플래티넘 팩처럼 "커먼이 안 나와요"를 내걸었으면 이 경로에서도 지켜져야 한다.
   for (const t of [...TIERS].reverse()) {
+    if (rates[t.key] <= 0) continue;
     const bucket = byTier[t.key];
     if (bucket.length) return bucket[Math.floor(rnd() * bucket.length) % bucket.length];
   }
   throw new Error("카드 풀이 비어 있어요");
 }
 
-/** n장을 중복 없이 뽑는다. 장당 20회 재시도하고, 그래도 겹치면 남은 풀에서 아무거나 채운다. */
+/**
+ * n장을 중복 없이 뽑는다. 장당 20회 재시도하고, 그래도 겹치면 남은 풀에서 아무거나 채운다.
+ *
+ * 채우는 후보에서 확률 0 인 등급은 아예 뺀다. 안 그러면 재시도가 바닥났을 때
+ * 플래티넘 팩에서 커먼이 튀어나온다. 상점에 "커먼이 안 나와요"라고 적어둔 약속이
+ * 이 드문 경로에서 조용히 깨지면 안 된다.
+ */
 export function drawPack(
   byTier: Record<TierKey, Card[]>,
   n: number,
   rnd: () => number = Math.random,
   rates: Rates = DEFAULT_RATES,
 ): Card[] {
-  const all = Object.values(byTier).flat();
+  const all = TIERS.filter((t) => rates[t.key] > 0).flatMap((t) => byTier[t.key]);
   const used = new Set<string>();
   const picked: Card[] = [];
   for (let i = 0; i < n && used.size < all.length; i++) {
