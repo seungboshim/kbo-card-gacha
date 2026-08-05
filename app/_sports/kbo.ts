@@ -205,6 +205,8 @@ function toPitcher(row: Row, role: "선발" | "불펜", ip: number): Omit<Card, 
 async function fetchStats(playerType: "HITTER" | "PITCHER"): Promise<Row[]> {
   const res = await fetch(`${BASE}/${SEASON}/players?playerType=${playerType}&pageSize=500`, {
     headers: { "User-Agent": "Mozilla/5.0", Referer: "https://m.sports.naver.com/" },
+    // 이제 스냅샷 스크립트만 이 함수를 부른다. 순수 Node 에서는 next 옵션이 무시되지만,
+    // 앱이 다시 직접 호출하게 될 때를 위해 남겨둔다.
     next: { revalidate: 3600 },
   });
   if (!res.ok) throw new Error(`Naver 기록 API ${playerType} 응답 ${res.status}`);
