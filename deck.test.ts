@@ -11,7 +11,7 @@ import {
   type Card,
   type TierKey,
 } from "./app/_game/deck.ts";
-import { parseInnings } from "./app/_sports/kbo.ts";
+import { parseInnings, meetsMinimum } from "./app/_sports/kbo.ts";
 import { computeEplPool, type StatMaps, type StatRow } from "./app/_sports/epl.ts";
 
 const card = (id: string, rating: number, tier: TierKey = "COMMON", role = "타자"): Card => ({
@@ -213,4 +213,17 @@ test("EPL: 레전드 후보는 등번호와 큰 사진을 따로 얹는다", () 
   const c = pool[0];
   assert.equal(c.back, "#9");
   assert.equal(c.photo, "https://sports-phinf.pstatic.net/player/wfootball/default/991181.png");
+});
+
+test("KBO 최소 출전: 타자는 124타석, 선발 31이닝, 불펜 21이닝으로 고정", () => {
+  // 타자는 타수+볼넷+몸에맞는공으로 타석을 센다
+  const hitter = (pa: number) => ({ hitterAb: pa, hitterBb: 0, hitterHp: 0 });
+  assert.equal(meetsMinimum(hitter(124), "타자", 0), true);
+  assert.equal(meetsMinimum(hitter(123), "타자", 0), false);
+
+  // 투수는 이닝만 본다 (row 는 안 쓰지만 시그니처를 맞춘다)
+  assert.equal(meetsMinimum({}, "선발", 31), true);
+  assert.equal(meetsMinimum({}, "선발", 30.9), false);
+  assert.equal(meetsMinimum({}, "불펜", 21), true);
+  assert.equal(meetsMinimum({}, "불펜", 20.9), false);
 });
