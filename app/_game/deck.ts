@@ -31,6 +31,11 @@ export type Card = {
   role: string;
   rating: number;
   tier: TierKey;
+  /**
+   * 직전 스냅샷의 등급. 등급이 실제로 바뀐 카드에만 들어간다(그대로면 아예 없다).
+   * 라이브 시즌에서 어제 대비 올랐는지 내렸는지 화살표를 그리는 데 쓴다.
+   */
+  prevTier?: TierKey;
   /** 레전드 카드 배경에 크게 깔 영문 표기("Erling Haaland"). 없으면 안 그린다. */
   subName?: string;
   headline: string;
