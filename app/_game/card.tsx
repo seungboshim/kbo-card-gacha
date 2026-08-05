@@ -86,8 +86,22 @@ export function PlayerCard({
   const s = STYLE[card.tier];
   // 사진이 없는 선수도 있다(원본 404). 카드 높이는 유지하고 이름으로 대체한다.
   const [noPhoto, setNoPhoto] = useState(false);
-  // mini는 좁은 화면 스택용이라 사진을 더 줄여 카드 전체 높이를 낮춘다.
-  const photoH = size === "full" ? "h-28" : size === "mini" ? "h-14" : "h-20";
+  // 사진과 이름을 한 덩이로 붙여 이름을 사진 위에 얹는 레이아웃.
+  // mini(모바일 스택)는 폭이 좁아 섹션을 나누면 사진이 너무 작아지므로 등급과 무관하게 쓰고,
+  // 넓은 화면에서는 레전드만 쓴다. 나머지는 사진과 이름 섹션이 나뉜 기본 레이아웃이다.
+  const isLegend = card.tier === "LEGEND";
+  const hero = size === "mini" || isLegend;
+  // 히어로는 이름 섹션이 사진 안으로 들어오는 대신 사진이 커진다. 아래 pb 와 합쳐
+  // 기본 레이아웃(사진 + 이름 섹션)과 전체 높이가 맞도록 잡은 값이다.
+  const photoH = !hero
+    ? size === "full"
+      ? "h-28"
+      : "h-20"
+    : size === "full"
+      ? "h-32"
+      : size === "mini"
+        ? "h-16"
+        : "h-24";
   const stats = size === "mini" ? miniStats(card, sport) : card.stats;
   const teamColor = sport.teamColor[card.teamId] ?? NEUTRAL_TEAM_COLOR;
   return (
@@ -96,7 +110,7 @@ export function PlayerCard({
       <div className="flex h-full flex-col overflow-hidden rounded-[14px] bg-zinc-950">
         {/* 팀 색은 사진 배경에서만 뚜렷하게: 흰색 글로스 위에 팀 색을 진하게 깔고 아래로 갈수록 죽인다 */}
         <div
-          className="relative flex items-end justify-center pt-3"
+          className={`relative flex items-end justify-center ${hero ? (size === "mini" ? "pt-2 pb-7" : "pt-2 pb-14") : "pt-3"}`}
           style={{
             backgroundImage: `linear-gradient(to bottom, rgba(255,255,255,0.1), transparent), linear-gradient(160deg, ${teamColor}e6 0%, ${teamColor}4d 65%, transparent 100%)`,
           }}
@@ -117,6 +131,28 @@ export function PlayerCard({
               className="absolute top-2 right-2 h-6 w-auto object-contain"
             />
           )}
+          {/* 레전드 배경 장식. 사진보다 먼저 그려서 선수 뒤에 깔리고, 등급 칩·팀 로고보다는
+              앞서 그려 그 둘이 위로 올라온다. 좌상단에 영문 이름을 단어마다 한 줄씩, 우하단에 등번호. */}
+          {isLegend && size !== "mini" && card.subName && (
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none absolute top-1 left-0 font-black tracking-tight text-white/10 uppercase ${size === "full" ? "text-3xl leading-[0.88]" : "text-2xl leading-[0.9]"}`}
+            >
+              {card.subName.split(" ").map((word, i) => (
+                <span key={i} className="block">
+                  {word}
+                </span>
+              ))}
+            </span>
+          )}
+          {isLegend && size !== "mini" && card.back && (
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none absolute right-0 bottom-9 leading-none font-black tabular-nums text-white/12 ${size === "full" ? "text-6xl" : "text-5xl"}`}
+            >
+              {card.back.replace("#", "")}
+            </span>
+          )}
           {noPhoto ? (
             // 사진 대신 사람 상반신 아바타 아이콘. alt 역할은 role="img"+aria-label로 대신하고 svg는 aria-hidden.
             // 비율은 실제 사진(210x262)에 맞춘다. 정사각으로 두면 사진 있는 카드와 실루엣이 달라 줄에서 튄다.
@@ -133,26 +169,49 @@ export function PlayerCard({
               height={262}
               priority={size === "full"}
               onError={() => setNoPhoto(true)}
-              className={`${photoH} w-auto object-contain outline outline-1 -outline-offset-1 outline-white/10 drop-shadow-lg`}
+              className={`${photoH} w-auto object-contain drop-shadow-lg`}
             />
+          )}
+          {/* 이름을 사진 위에 얹는다. 아래로 갈수록 짙어지는 그라디언트로 글자를 읽히게 한다. */}
+          {hero && (
+            <div
+              className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-zinc-950 via-zinc-950/90 to-transparent px-3 ${size === "mini" ? "pt-5 pb-1" : "pt-8 pb-1.5"}`}
+            >
+              <div className="flex items-baseline gap-1.5">
+                <span
+                  className={`truncate ${isLegend ? "font-black" : "font-bold"} ${size === "full" ? "text-xl" : size === "mini" ? "text-sm" : "text-base"}`}
+                >
+                  {card.name}
+                </span>
+                {size !== "mini" && card.back && (
+                  <span className="shrink-0 text-[11px] text-zinc-400 tabular-nums">{card.back}</span>
+                )}
+              </div>
+              {/* mini는 165px 안팎 폭이라 이름 아래는 대표 스탯만 남기고 팀/포지션/headline은 생략한다 */}
+              {size !== "mini" && (
+                <>
+                  <div className="truncate text-[11px] text-zinc-400">
+                    {card.team} · {card.pos}
+                  </div>
+                  <div className={`truncate text-[11px] font-medium tabular-nums ${s.label}`}>{card.headline}</div>
+                </>
+              )}
+            </div>
           )}
         </div>
 
-        <div className="border-t border-white/10 px-3 pt-2 pb-1">
-          <div className="flex items-baseline gap-1.5">
-            <span className={`truncate font-bold ${size === "full" ? "text-lg" : "text-sm"}`}>{card.name}</span>
-            {size !== "mini" && <span className="shrink-0 text-[11px] text-zinc-500 tabular-nums">{card.back}</span>}
+        {!hero && (
+          <div className="border-t border-white/10 px-3 pt-2 pb-1">
+            <div className="flex items-baseline gap-1.5">
+              <span className={`truncate font-bold ${size === "full" ? "text-lg" : "text-sm"}`}>{card.name}</span>
+              {card.back && <span className="shrink-0 text-[11px] text-zinc-500 tabular-nums">{card.back}</span>}
+            </div>
+            <div className="truncate text-[11px] text-zinc-400">
+              {card.team} · {card.pos}
+            </div>
+            <div className={`mt-0.5 truncate text-[11px] font-medium tabular-nums ${s.label}`}>{card.headline}</div>
           </div>
-          {/* mini는 165px 안팎 폭이라 이름 아래는 대표 스탯만 남기고 팀/포지션/headline은 생략한다 */}
-          {size !== "mini" && (
-            <>
-              <div className="truncate text-[11px] text-zinc-400">
-                {card.team} · {card.pos}
-              </div>
-              <div className={`mt-0.5 truncate text-[11px] font-medium tabular-nums ${s.label}`}>{card.headline}</div>
-            </>
-          )}
-        </div>
+        )}
 
         {/* mini/compact는 4인 좁은 화면에서도 한글 라벨이 안 잘리게 2열로 (4열은 셀당 폭이 부족) */}
         <div className={`mt-auto grid gap-px bg-white/10 text-center ${size === "full" ? "grid-cols-4" : "grid-cols-2"}`}>

@@ -31,6 +31,8 @@ export type Card = {
   role: string;
   rating: number;
   tier: TierKey;
+  /** 레전드 카드 배경에 크게 깔 영문 표기("Erling Haaland"). 없으면 안 그린다. */
+  subName?: string;
   headline: string;
   stats: { k: string; v: string }[];
 };

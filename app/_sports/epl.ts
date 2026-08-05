@@ -8,7 +8,7 @@
 // FotMob 쪽은 스탯 종류마다 파일이 하나씩이고 컷이 없다. 대신 여러 파일을 선수 ID 로 조인해야
 // 카드 한 장이 완성된다. 평점(rating)을 직접 주므로 활약도를 우리가 합성하지 않는다.
 
-import { assignTiers, type Card, type SportConfig } from "../_game/deck.ts";
+import { TIERS, assignTiers, type Card, type SportConfig } from "../_game/deck.ts";
 import { KOREAN_NAME } from "./epl-names.ts";
 
 // 시즌마다 바뀐다. data.fotmob.com/stats/47/season/{SEASON_ID}/topstats.json 의 경로는
@@ -20,7 +20,27 @@ const BASE = `https://data.fotmob.com/stats/${LEAGUE_ID}/season/${SEASON_ID}`;
 /** 최소 출전(분). 1500분 = 약 17경기 풀타임. 더 올리면 풀이 줄어 등급 정원까지 같이 깎인다. */
 const MIN_MINS = 1500;
 
+/**
+ * 레전드로 올라가려면 넘어야 하는 출전(분). 평점은 90분당 평균이라 적게 뛴 선수도 높게 나온다.
+ * 로드리가 1513분(21경기)만 뛰고 7.51로 전체 6위였는데, 38경기를 버틴 선수와 같은 줄에
+ * 세우기엔 표본이 얇다. 2000분 = 약 22경기.
+ */
+const LEGEND_MIN_MINS = 2000;
+
 type Role = "골키퍼" | "센터백" | "풀백" | "미드필더" | "공격형MF" | "윙어" | "스트라이커";
+
+// 카드에 찍히는 포지션 이름. 등급은 role 로 가르고 화면에는 pos 를 쓴다(Card 가 둘을 따로 들고 있다).
+// 공격형MF 는 미드필더와 따로 줄을 세워야 브루노와 라이스가 각각 1위가 되지만,
+// 카드에서까지 "공격형MF"로 부르면 두 이름이 나란히 보여 산만하다. 표기만 합친다.
+const POS_LABEL: Record<Role, string> = {
+  골키퍼: "골키퍼",
+  센터백: "센터백",
+  풀백: "풀백",
+  미드필더: "미드필더",
+  공격형MF: "미드필더",
+  윙어: "윙어",
+  스트라이커: "스트라이커",
+};
 
 /**
  * FotMob 포지션 코드 → 역할군. 코드는 응답의 Positions 배열 첫 값을 쓴다(주 포지션).
@@ -71,13 +91,37 @@ const TEAM_KR: Record<string, string> = {
   "8586": "토트넘 홋스퍼", "8654": "웨스트햄 유나이티드", "8191": "번리", "8602": "울버햄튼 원더러스",
 };
 
+// mini 카드에 남길 대표 스탯 2개. statsOf 가 만드는 라벨과 글자까지 같아야 찾을 수 있다.
+/**
+ * 레전드 후보에게만 얹는 등번호와 큰 사진. FotMob 평점 목록은 등번호를 주지 않고,
+ * 선수 사진도 얼굴만 잘린 작은 정사각형이라(10KB 안팎) 레전드 카드의 큰 레이아웃에서 허전하다.
+ * 네이버 쪽 상반신 사진(80KB 안팎)과 등번호를 대신 쓴다.
+ *
+ * 시즌 성적이 바뀌어 레전드가 달라지면 여기 없는 선수는 그냥 FotMob 기본 사진으로 나온다.
+ * 등급과 무관하게 적용하므로 이 선수들이 에픽으로 내려가도 사진은 그대로 좋은 걸 쓴다.
+ */
+const HERO: Record<string, { back?: string; photo: string }> = {
+  "Gianluigi Donnarumma": { back: "#25", photo: "548577" },
+  "Marc Guéhi": { back: "#15", photo: "936120" },
+  "Matheus Nunes": { back: "#27", photo: "1560920" },
+  "Declan Rice": { back: "#41", photo: "574392" },
+  "Bruno Fernandes": { back: "#8", photo: "523155" },
+  "Bukayo Saka": { back: "#7", photo: "1479630" },
+  "Erling Haaland": { back: "#9", photo: "991181" },
+  "Bruno Guimarães": { back: "#39", photo: "1141016" },
+  // 앤더슨은 네이버가 등번호를 0으로 주고 FotMob 스쿼드에도 없어 직접 적었다.
+  "Elliot Anderson": { back: "#8", photo: "1635776" },
+  "Rodri": { back: "#16", photo: "844073" },
+  "Dominik Szoboszlai": { back: "#8", photo: "1064588" },
+};
+
 const MINI_STATS: Record<Role, [string, string]> = {
   골키퍼: ["클린시트", "선방률"],
-  센터백: ["태클", "클리어"],
+  센터백: ["태클/90", "클리어/90"],
   풀백: ["도움", "기회창출"],
-  미드필더: ["기회창출", "태클"],
+  미드필더: ["기회창출", "태클/90"],
   공격형MF: ["골", "도움"],
-  윙어: ["골", "드리블"],
+  윙어: ["골", "드리블/90"],
   스트라이커: ["골", "xG"],
 };
 
@@ -173,74 +217,67 @@ function diff(x: number | undefined, n = 1): string {
   return `${v >= 0 ? "+" : ""}${v.toFixed(n)}`;
 }
 
+// FotMob 은 스탯마다 단위가 다르다. 골·도움·xG 는 시즌 누적인데 태클·인터셉트·드리블은 90분당이라
+// 라벨 없이 나란히 두면 27골과 태클 1.8이 같은 단위처럼 읽힌다. 90분당인 칸만 "/90"을 붙여 가른다.
+const P90 = (k: string) => `${k}/90`;
+
 function statsOf(role: Role, get: (f: string) => StatRow | undefined, rating: StatRow): { k: string; v: string }[] {
   const v = (f: string) => get(f)?.StatValue;
   const sub = (f: string) => get(f)?.SubStatValue;
   const games = { k: "경기", v: int(rating.MatchesPlayed) };
   const score = { k: "평점", v: rating.StatValue.toFixed(2) };
+  const tackle = { k: P90("태클"), v: dec(v("total_tackle")) };
+  const inter = { k: P90("인터셉트"), v: dec(v("interception")) };
+  const dribble = { k: P90("드리블"), v: dec(v("won_contest")) };
+  const passPct = { k: "패스성공", v: pct(sub("accurate_pass")) };
+  const goals = { k: "골", v: int(v("goals")) };
+  const assists = { k: "도움", v: int(v("goal_assist")) };
+  const chances = { k: "기회창출", v: int(v("total_att_assist")) };
   switch (role) {
     case "골키퍼":
       return [
         games,
         { k: "클린시트", v: int(v("clean_sheet")) },
         { k: "선방률", v: pct(v("_save_percentage")) },
-        { k: "세이브", v: dec(v("saves")) },
+        { k: P90("세이브"), v: dec(v("saves")) },
         { k: "실점방지", v: diff(v("_goals_prevented")) },
-        { k: "실점", v: dec(v("goals_conceded"), 2) },
+        { k: P90("실점"), v: dec(v("goals_conceded"), 2) },
         { k: "출전분", v: int(rating.MinutesPlayed) },
         score,
       ];
     case "센터백":
       return [
         games,
-        { k: "태클", v: dec(v("total_tackle")) },
-        { k: "인터셉트", v: dec(v("interception")) },
-        { k: "클리어", v: dec(v("effective_clearance")) },
-        { k: "블록", v: dec(v("outfielder_block")) },
-        { k: "패스성공", v: pct(sub("accurate_pass")) },
-        { k: "리커버리", v: dec(v("ball_recovery")) },
+        tackle,
+        inter,
+        { k: P90("클리어"), v: dec(v("effective_clearance")) },
+        { k: P90("블록"), v: dec(v("outfielder_block")) },
+        passPct,
+        { k: P90("리커버리"), v: dec(v("ball_recovery")) },
         score,
       ];
     case "풀백":
-      return [
-        games,
-        { k: "도움", v: int(v("goal_assist")) },
-        { k: "기회창출", v: int(v("total_att_assist")) },
-        { k: "드리블", v: dec(v("won_contest")) },
-        { k: "태클", v: dec(v("total_tackle")) },
-        { k: "인터셉트", v: dec(v("interception")) },
-        { k: "패스성공", v: pct(sub("accurate_pass")) },
-        score,
-      ];
+      return [games, assists, chances, dribble, tackle, inter, passPct, score];
     case "미드필더":
-      return [
-        games,
-        { k: "골", v: int(v("goals")) },
-        { k: "도움", v: int(v("goal_assist")) },
-        { k: "기회창출", v: int(v("total_att_assist")) },
-        { k: "패스성공", v: pct(sub("accurate_pass")) },
-        { k: "태클", v: dec(v("total_tackle")) },
-        { k: "인터셉트", v: dec(v("interception")) },
-        score,
-      ];
+      return [games, goals, assists, chances, passPct, tackle, inter, score];
     case "공격형MF":
       return [
         games,
-        { k: "골", v: int(v("goals")) },
-        { k: "도움", v: int(v("goal_assist")) },
+        goals,
+        assists,
         { k: "xA", v: dec(sub("goal_assist")) },
         { k: "결정적기회", v: int(v("big_chance_created")) },
-        { k: "드리블", v: dec(v("won_contest")) },
-        { k: "패스성공", v: pct(sub("accurate_pass")) },
+        dribble,
+        passPct,
         score,
       ];
     case "윙어":
       return [
         games,
-        { k: "골", v: int(v("goals")) },
-        { k: "도움", v: int(v("goal_assist")) },
-        { k: "드리블", v: dec(v("won_contest")) },
-        { k: "기회창출", v: int(v("total_att_assist")) },
+        goals,
+        assists,
+        dribble,
+        chances,
         { k: "xG", v: dec(v("expected_goals")) },
         { k: "xA", v: dec(sub("goal_assist")) },
         score,
@@ -248,11 +285,11 @@ function statsOf(role: Role, get: (f: string) => StatRow | undefined, rating: St
     case "스트라이커":
       return [
         games,
-        { k: "골", v: int(v("goals")) },
-        { k: "도움", v: int(v("goal_assist")) },
+        goals,
+        assists,
         { k: "xG", v: dec(v("expected_goals")) },
         { k: "xGOT", v: dec(v("expected_goalsontarget")) },
-        { k: "유효슛", v: dec(v("ontarget_scoring_att")) },
+        { k: P90("유효슛"), v: dec(v("ontarget_scoring_att")) },
         { k: "놓친기회", v: int(v("big_chance_missed")) },
         score,
       ];
@@ -271,6 +308,8 @@ function headlineOf(role: Role, get: (f: string) => StatRow | undefined, rating:
 /** fetch와 분리한 순수 계산부. 테스트에서 네트워크 없이 가짜 데이터로 검증한다. */
 export function computeEplPool(ratingList: StatRow[], stats: StatMaps, minMins = MIN_MINS): Card[] {
   const byRole = new Map<Role, Omit<Card, "tier">[]>();
+  // 레전드 컷에 쓸 출전 시간. Card 에는 안 실리는 값이라 여기서 따로 들고 간다.
+  const minsById = new Map<string, number>();
   for (const r of ratingList) {
     if (!r || r.ParticiantId == null || !r.ParticipantName) continue;
     if ((num(r.MinutesPlayed) ?? 0) < minMins) continue;
@@ -278,6 +317,8 @@ export function computeEplPool(ratingList: StatRow[], stats: StatMaps, minMins =
     if (!role) continue;
     const get = (f: string) => stats[f]?.get(r.ParticiantId);
     const teamId = String(r.TeamId ?? "");
+    const hero = HERO[r.ParticipantName];
+    minsById.set(String(r.ParticiantId), num(r.MinutesPlayed) ?? 0);
     if (!byRole.has(role)) byRole.set(role, []);
     byRole.get(role)!.push({
       id: String(r.ParticiantId),
@@ -285,16 +326,47 @@ export function computeEplPool(ratingList: StatRow[], stats: StatMaps, minMins =
       team: TEAM_KR[teamId] ?? r.TeamName ?? "",
       teamId,
       teamLogo: teamId ? `https://images.fotmob.com/image_resources/logo/teamlogo/${teamId}.png` : "",
-      photo: `https://images.fotmob.com/image_resources/playerimages/${r.ParticiantId}.png`,
-      pos: role,
-      back: "",
+      photo: hero
+        ? `https://sports-phinf.pstatic.net/player/wfootball/default/${hero.photo}.png`
+        : `https://images.fotmob.com/image_resources/playerimages/${r.ParticiantId}.png`,
+      pos: POS_LABEL[role],
+      back: hero?.back ?? "",
       role,
       rating: r.StatValue,
+      subName: r.ParticipantName,
       headline: headlineOf(role, get, r),
       stats: statsOf(role, get, r),
     });
   }
-  return [...byRole.values()].flatMap((cards) => assignTiers(cards));
+  return promoteGlobalLegends(
+    [...byRole.values()].flatMap((cards) => assignTiers(cards)),
+    minsById,
+  );
+}
+
+/**
+ * 레전드만 역할군을 걷어내고 전체 평점 상위 3%로 다시 정한다.
+ *
+ * FotMob 평점은 포지션이 달라도 같은 척도라(6.2~8.03) 전체 비교가 성립한다. 역할군마다 1위를
+ * 레전드로 두면 센터백 1위(7.37)가 미드필더 4위(7.51)보다 높은 등급을 받아 뒤집힌다.
+ * KBO 는 이렇게 못 한다. WAR 은 타자 6.01 / 선발 3.89 / 불펜 2.02 로 척도가 달라서
+ * 전체로 줄세우면 상위권이 통째로 타자가 되고 마무리투수는 영영 레전드가 안 된다.
+ *
+ * 에픽 아래는 역할군별 순위를 그대로 둔다. 그래야 골키퍼·센터백에서도 상위 등급이 나온다.
+ * 역할군 1위였다가 전체 컷에 못 든 선수는 에픽으로 내린다.
+ */
+function promoteGlobalLegends(cards: Card[], minsById: Map<string, number>): Card[] {
+  const cut = Math.max(1, Math.floor(cards.length * TIERS[0].pct));
+  const legendIds = new Set(
+    [...cards]
+      .filter((c) => (minsById.get(c.id) ?? 0) >= LEGEND_MIN_MINS)
+      .sort((a, b) => b.rating - a.rating)
+      .slice(0, cut)
+      .map((c) => c.id),
+  );
+  return cards.map((c) =>
+    legendIds.has(c.id) ? { ...c, tier: "LEGEND" as const } : c.tier === "LEGEND" ? { ...c, tier: "EPIC" as const } : c,
+  );
 }
 
 export async function getEplPool(): Promise<Card[]> {

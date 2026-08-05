@@ -184,7 +184,9 @@ test("EPL: 스탯 8칸에 평점이 들어가고 없는 기록은 0으로 채운
   assert.equal(st.stats.find((s) => s.k === "골")!.v, "27");
   assert.equal(st.stats.find((s) => s.k === "xG")!.v, "25.4");
   assert.equal(st.stats.at(-1)!.v, "7.68");
-  assert.equal(st.stats.find((s) => s.k === "유효슛")!.v, "0.0"); // 파일에 없으면 0
+  assert.equal(st.stats.find((s) => s.k === "유효슛/90")!.v, "0.0"); // 파일에 없으면 0
+  // 누적과 90분당이 섞이므로 90분당인 칸만 라벨로 구분한다
+  assert.ok(st.stats.some((s) => s.k === "골") && !st.stats.some((s) => s.k === "골/90"));
   const gk = pool.find((c) => c.role === "골키퍼")!;
   assert.equal(gk.stats.find((s) => s.k === "클린시트")!.v, "19");
   assert.equal(gk.stats.find((s) => s.k === "선방률")!.v, "73%");
@@ -198,9 +200,17 @@ test("EPL: 한글 이름이 있으면 바꾸고 없으면 영문 그대로 둔�
 });
 
 test("EPL: 팀 이름과 이미지 주소를 채운다", () => {
-  const pool = computeEplPool([fmRow(737066, "Erling Haaland", 115, 7.68, 2000, { TeamId: 8456, TeamName: "Manchester City" })], {});
+  const pool = computeEplPool([fmRow(999999, "Nobody Unknown", 115, 7.0, 2000, { TeamId: 8456, TeamName: "Manchester City" })], {});
   const c = pool[0];
   assert.equal(c.team, "맨체스터 시티");
   assert.equal(c.teamLogo, "https://images.fotmob.com/image_resources/logo/teamlogo/8456.png");
-  assert.equal(c.photo, "https://images.fotmob.com/image_resources/playerimages/737066.png");
+  assert.equal(c.photo, "https://images.fotmob.com/image_resources/playerimages/999999.png");
+  assert.equal(c.back, ""); // 평점 목록에 등번호가 없다
+});
+
+test("EPL: 레전드 후보는 등번호와 큰 사진을 따로 얹는다", () => {
+  const pool = computeEplPool([fmRow(737066, "Erling Haaland", 115, 7.68, 2000, { TeamId: 8456 })], {});
+  const c = pool[0];
+  assert.equal(c.back, "#9");
+  assert.equal(c.photo, "https://sports-phinf.pstatic.net/player/wfootball/default/991181.png");
 });
