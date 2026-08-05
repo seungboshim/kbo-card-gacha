@@ -7,9 +7,17 @@ on:
   # 손으로도 돌릴 수 있게
   workflow_dispatch:
 
+# 손으로 돌린 게 예약 실행과 겹치면 둘 다 커밋을 만들어 뒤에 오는 push 가 거부당한다.
+# 앞선 실행을 죽이지 않고 줄을 세운다.
+concurrency:
+  group: daily-snapshot
+  cancel-in-progress: false
+
 jobs:
   snapshot:
     runs-on: ubuntu-latest
+    # 네이버나 FotMob 이 응답을 안 주고 매달리면 기본 상한(6시간)까지 붙잡고 있는다.
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:

@@ -31,13 +31,20 @@ node --test --test-name-pattern "레전드" deck.test.ts   # 테스트 하나만
 - `app/_sports/*` — 종목별 어댑터. 성적 API 호출, rating 계산, 표시 문구. 각각 `SportConfig`
   상수(`KBO`, `EPL`)와 `get{Kbo,Epl}Pool(): Promise<Card[]>` 를 내보낸다
 
-새 종목을 붙인다면 `app/_sports/` 에 파일 하나 + `app/<key>/page.tsx` + `game.tsx` 의 `SPORTS`
-맵에 등록. `_` 로 시작하는 폴더는 Next.js 라우팅에서 빠진다.
+`_` 로 시작하는 폴더는 Next.js 라우팅에서 빠진다.
+
+**시즌을 추가할 때**는 `_sports/seasons.ts` 의 `SEASONS` 와 `_sports/pools.ts` 의 `LOADERS` 에
+한 줄씩 더하고 스냅샷을 굽는다.
+
+**새 종목을 붙일 때**는 그 둘에 더해 `_sports/` 에 어댑터 파일 하나, `app/<key>/page.tsx`,
+`game.tsx` 의 `SPORTS` 맵, `snapshot.ts` 의 `FETCHERS`, 그리고 `Season["sport"]` 의 유니온까지
+손댄다.
 
 ### 서버 → 클라이언트 경계
 
-`app/kbo/page.tsx`, `app/epl/page.tsx` 는 서버 컴포넌트다(`revalidate = 3600`). 풀을 받아
-`<Game pool={pool} sport="kbo" />` 로 넘긴다. `SportConfig` 에 함수 필드(`miniStatKeys`)가 있어
+`app/kbo/page.tsx`, `app/epl/page.tsx` 는 서버 컴포넌트다. `loadPool()` 로 저장소의 JSON 을
+읽어 `<Game pool={pool} sport="kbo" />` 로 넘긴다. 요청 시점에 받아오는 게 없어 두 페이지 다
+정적으로 미리 만들어진다. `SportConfig` 에 함수 필드(`miniStatKeys`)가 있어
 직렬화로 못 넘어가므로 **key 문자열만 넘기고 `game.tsx` 가 다시 찾는다**. 이 구조를 깨지 말 것.
 
 ### import 확장자
