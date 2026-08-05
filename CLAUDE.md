@@ -34,18 +34,37 @@ node --test --test-name-pattern "레전드" deck.test.ts   # 테스트 하나만
 `_` 로 시작하는 폴더는 Next.js 라우팅에서 빠진다.
 
 **시즌을 추가할 때**는 `_sports/seasons.ts` 의 `SEASONS` 와 `_sports/pools.ts` 의 `LOADERS` 에
-한 줄씩 더하고 스냅샷을 굽는다.
+한 줄씩 더하고 스냅샷을 굽는다. 한쪽만 고치면 `pools.ts` 가 모듈을 읽는 순간 던져서
+빌드가 깨진다.
 
-**새 종목을 붙일 때**는 그 둘에 더해 `_sports/` 에 어댑터 파일 하나, `app/<key>/page.tsx`,
-`game.tsx` 의 `SPORTS` 맵, `snapshot.ts` 의 `FETCHERS`, 그리고 `Season["sport"]` 의 유니온까지
-손댄다.
+**새 종목을 붙일 때**는 그 둘에 더해 `_sports/` 에 어댑터 파일 하나, `seasons.ts` 의 `SPORT`
+와 `Season["sport"]` 유니온, `game.tsx` 의 `SPORTS` 맵, `snapshot.ts` 의 `FETCHERS`,
+`app/page.tsx` 의 `LEAGUE_COLOR` 를 손댄다. 라우트는 동적 세그먼트라 **페이지 파일은 안 만들어도
+된다.**
+
+### 라우팅
+
+```
+/                          메인. 종목 × 모드
+/[sport]/multi             시즌 고르기
+/[sport]/multi/[season]    여럿이서 게임
+```
+
+종목과 시즌은 동적 세그먼트다. 둘 다 `_sports/seasons.ts` 의 `SEASONS` 에서 파생되고
+`generateStaticParams` 로 빌드 때 전부 굽는다. `dynamicParams = false` 라 매니페스트에
+없는 주소는 404 다.
+
+옛 주소 `/kbo`, `/epl` 은 `next.config.ts` 의 `redirects()` 가 `/[sport]/multi` 로 넘긴다.
+307(임시)이라 나중에 `/kbo` 를 종목 홈으로 쓰고 싶어져도 브라우저 캐시에 안 박힌다.
+
+혼자서 모드(`/[sport]/solo`)는 아직 없다. 메인화면에서 잠긴 칸으로만 보인다.
 
 ### 서버 → 클라이언트 경계
 
-`app/kbo/page.tsx`, `app/epl/page.tsx` 는 서버 컴포넌트다. `loadPool()` 로 저장소의 JSON 을
-읽어 `<Game pool={pool} sport="kbo" />` 로 넘긴다. 요청 시점에 받아오는 게 없어 두 페이지 다
-정적으로 미리 만들어진다. `SportConfig` 에 함수 필드(`miniStatKeys`)가 있어
-직렬화로 못 넘어가므로 **key 문자열만 넘기고 `game.tsx` 가 다시 찾는다**. 이 구조를 깨지 말 것.
+`app/[sport]/multi/[season]/page.tsx` 는 서버 컴포넌트다. `loadPool()` 로 저장소의 JSON 을
+읽어 `<Game pool={pool} sport="kbo" />` 로 넘긴다. 요청 시점에 받아오는 게 없어 정적으로
+미리 만들어진다. `SportConfig` 에 함수 필드(`miniStatKeys`)가 있어 직렬화로 못 넘어가므로
+**key 문자열만 넘기고 `game.tsx` 가 다시 찾는다**. 이 구조를 깨지 말 것.
 
 ### import 확장자
 
@@ -100,3 +119,7 @@ node --test --test-name-pattern "레전드" deck.test.ts   # 테스트 하나만
   근거 없이 상수만 갈지 말 것
 - 의존성을 늘리지 않는다. Next + React 만 쓴다
 - 커밋 메시지는 한국어 현재형 평서문("~한다", "~로 바꾼다")
+- **인라인 `boxShadow` 가 있는 element 에 `focus-visible:ring-*` 을 걸면 안 보인다.** Tailwind 의
+  ring 은 box-shadow 로 구현되는데 인라인 스타일이 항상 이긴다. 이 저장소는 리그·등급 광원을
+  인라인 그림자로 그리는 자리가 있으니(`app/page.tsx` 의 입구 카드), 그런 element 에는
+  `focus-visible:outline-2 focus-visible:outline-offset-2` 를 쓴다. outline 은 독립된 속성이라 안 부딪힌다

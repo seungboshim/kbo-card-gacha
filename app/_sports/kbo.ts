@@ -28,7 +28,6 @@ export const KBO: SportConfig = {
   key: "kbo",
   title: "KBO 카드깡",
   seasonLabel: String(SEASON),
-  emblem: "⚾",
   packSub: `${SEASON} KBO`,
   teamColor: TEAM_COLOR,
   miniStatKeys: (role) => (role === "타자" ? ["타율", "WAR"] : ["ERA", "WAR"]),
