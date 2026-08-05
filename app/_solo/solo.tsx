@@ -28,12 +28,12 @@ export default function Solo({
   const [ready, setReady] = useState(false);
 
   // 마운트 직후 딱 한 번만 저장된 런으로 갈아끼운다. 커밋 이후(useEffect)에 해야
-  // 하이드레이션 검사 시점(서버 출력과 비교하는 순간)과 안 겹친다 — 렌더 중에 하면
-  // (지연 초기화든 렌더 중 setState든) 그 순간의 출력이 이미 저장값을 반영해버려
-  // 서버가 그린 마크업과 어긋난다. react-hooks/set-state-in-effect 는 이 패턴을
-  // 일반적으로 막지만, 외부 저장소(localStorage)를 하이드레이션 안전하게 읽는 이
-  // 경우엔 규칙이 제안하는 useSyncExternalStore 가 오히려 과하다(그 훅은 스냅샷이
-  // 매 렌더 같은 참조여야 하는데 JSON.parse 결과는 매번 새 객체라 무한 렌더를 부른다).
+  // 하이드레이션 검사 시점과 안 겹친다. 렌더 중에 읽으면(지연 초기화든 렌더 중
+  // setState든) 그 순간의 출력이 이미 저장값을 반영해버려 서버가 그린 마크업과 어긋난다.
+  //
+  // react-hooks/set-state-in-effect 가 이 패턴을 막지만 여기서는 끈다. 규칙이 제안하는
+  // useSyncExternalStore 는 스냅샷이 매 렌더 같은 참조여야 하는데, JSON.parse 결과는
+  // 매번 새 객체라 무한 렌더를 부른다. 한 번 읽고 마는 값에 캐시 장치까지 붙일 일은 아니다.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRun(loadRun(season) ?? newRun(season));
