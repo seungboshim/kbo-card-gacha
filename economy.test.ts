@@ -16,7 +16,7 @@ import {
 } from "./app/_solo/economy.ts";
 import { TIERS } from "./app/_game/deck.ts";
 import { toSlots, takeFrom, applyUpgrade, type Owned } from "./app/_solo/vault.ts";
-import { newRun, parseRun, serializeRun, runKey, type Run } from "./app/_solo/storage.ts";
+import { newRun, parseRun, serializeRun, runKey } from "./app/_solo/storage.ts";
 
 test("팩 세 종의 확률표 합이 각각 100%", () => {
   for (const p of PACKS) {
