@@ -15,6 +15,7 @@ import {
   cheapestPackPrice,
 } from "./app/_solo/economy.ts";
 import { TIERS } from "./app/_game/deck.ts";
+import { toSlots, takeFrom, applyUpgrade, type Owned } from "./app/_solo/vault.ts";
 
 test("팩 세 종의 확률표 합이 각각 100%", () => {
   for (const p of PACKS) {
@@ -105,4 +106,73 @@ test("파산 판정: 제일 싼 팩도 못 사고 보관함도 비었을 때만"
   assert.equal(isBankrupt(cheap - 1, 0), true);
   assert.equal(isBankrupt(cheap - 1, 1), false, "팔 카드가 남았으면 아직 아니다");
   assert.equal(isBankrupt(0, 0), true);
+});
+
+const owned = (id: string, plus = 0): Owned => ({ id, plus });
+
+test("같은 선수 + 같은 강화 수치를 한 칸으로 묶는다", () => {
+  const slots = toSlots([owned("a"), owned("b"), owned("a")]);
+  assert.equal(slots.length, 2);
+  assert.equal(slots.find((s) => s.id === "a")!.count, 2);
+  assert.equal(slots.find((s) => s.id === "b")!.count, 1);
+});
+
+test("같은 선수라도 강화 수치가 다르면 다른 칸", () => {
+  const slots = toSlots([owned("a", 0), owned("a", 7), owned("a", 0)]);
+  assert.equal(slots.length, 2);
+  assert.equal(slots.find((s) => s.plus === 0)!.count, 2);
+  assert.equal(slots.find((s) => s.plus === 7)!.count, 1);
+});
+
+test("빈 보관함은 빈 칸 목록", () => {
+  assert.deepEqual(toSlots([]), []);
+});
+
+test("takeFrom: 칸에서 고른 장수만 뺀다", () => {
+  const v = [owned("a"), owned("a"), owned("a"), owned("b")];
+  const left = takeFrom(v, { id: "a", plus: 0 }, 2);
+  assert.equal(left.length, 2);
+  assert.equal(toSlots(left).find((s) => s.id === "a")!.count, 1);
+});
+
+test("takeFrom: 가진 것보다 많이 빼려 해도 있는 만큼만 빠진다", () => {
+  const v = [owned("a"), owned("b")];
+  const left = takeFrom(v, { id: "a", plus: 0 }, 99);
+  assert.equal(left.length, 1);
+  assert.equal(left[0].id, "b");
+});
+
+test("takeFrom: 강화 수치가 다른 같은 선수는 안 건드린다", () => {
+  const v = [owned("a", 0), owned("a", 3)];
+  const left = takeFrom(v, { id: "a", plus: 0 }, 1);
+  assert.equal(left.length, 1);
+  assert.equal(left[0].plus, 3);
+});
+
+test("applyUpgrade 성공: 한 장만 칸에서 빠져나와 다음 단계가 된다", () => {
+  // 같은 칸에 세 장이 있어도 강화는 한 장에만 걸린다
+  const v = [owned("a"), owned("a"), owned("a")];
+  const next = applyUpgrade(v, { id: "a", plus: 0 }, "success");
+  const slots = toSlots(next);
+  assert.equal(next.length, 3, "장수는 그대로");
+  assert.equal(slots.find((s) => s.plus === 0)!.count, 2);
+  assert.equal(slots.find((s) => s.plus === 1)!.count, 1);
+});
+
+test("applyUpgrade 실패: 아무것도 안 바뀐다", () => {
+  const v = [owned("a"), owned("a")];
+  const next = applyUpgrade(v, { id: "a", plus: 0 }, "keep");
+  assert.deepEqual(toSlots(next), toSlots(v));
+});
+
+test("applyUpgrade 파괴: 한 장만 사라진다", () => {
+  const v = [owned("a"), owned("a"), owned("b")];
+  const next = applyUpgrade(v, { id: "a", plus: 0 }, "destroy");
+  assert.equal(next.length, 2);
+  assert.equal(toSlots(next).find((s) => s.id === "a")!.count, 1);
+});
+
+test("applyUpgrade: 없는 칸을 강화하려 하면 그대로 둔다", () => {
+  const v = [owned("a")];
+  assert.deepEqual(applyUpgrade(v, { id: "없음", plus: 0 }, "success"), v);
 });
