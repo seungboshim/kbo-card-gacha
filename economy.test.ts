@@ -16,6 +16,7 @@ import {
 } from "./app/_solo/economy.ts";
 import { TIERS } from "./app/_game/deck.ts";
 import { toSlots, takeFrom, applyUpgrade, type Owned } from "./app/_solo/vault.ts";
+import { newRun, parseRun, serializeRun, runKey, type Run } from "./app/_solo/storage.ts";
 
 test("팩 세 종의 확률표 합이 각각 100%", () => {
   for (const p of PACKS) {
@@ -175,4 +176,46 @@ test("applyUpgrade 파괴: 한 장만 사라진다", () => {
 test("applyUpgrade: 없는 칸을 강화하려 하면 그대로 둔다", () => {
   const v = [owned("a")];
   assert.deepEqual(applyUpgrade(v, { id: "없음", plus: 0 }, "success"), v);
+});
+
+test("newRun: 시작 크레딧과 빈 보관함", () => {
+  const r = newRun("kbo-2026");
+  assert.equal(r.season, "kbo-2026");
+  assert.equal(r.credits, START_CREDITS);
+  assert.deepEqual(r.vault, []);
+  assert.equal(r.best, null);
+  assert.equal(r.over, false);
+});
+
+test("직렬화하고 되읽으면 같다", () => {
+  const r = newRun("kbo-2026");
+  r.credits = 1234;
+  r.vault = [{ id: "타자-1", plus: 3 }];
+  r.best = { id: "타자-1", plus: 3 };
+  assert.deepEqual(parseRun(serializeRun(r)), r);
+});
+
+test("없는 저장값은 null", () => {
+  assert.equal(parseRun(null), null);
+});
+
+test("깨진 JSON 은 null", () => {
+  assert.equal(parseRun("{"), null);
+  assert.equal(parseRun(""), null);
+});
+
+test("스키마 버전이 다르면 버린다", () => {
+  // 나중에 형태를 바꿀 때 옛 저장값을 조용히 버리고 새로 시작하게 한다.
+  const old = JSON.stringify({ ...newRun("kbo-2026"), v: 0 });
+  assert.equal(parseRun(old), null);
+});
+
+test("모양이 안 맞으면 버린다", () => {
+  assert.equal(parseRun(JSON.stringify({ v: 1 })), null);
+  assert.equal(parseRun(JSON.stringify({ v: 1, season: "kbo-2026", credits: "많음", vault: [], best: null, over: false })), null);
+  assert.equal(parseRun(JSON.stringify({ v: 1, season: "kbo-2026", credits: 10, vault: "없음", best: null, over: false })), null);
+});
+
+test("runKey 는 시즌마다 다르다", () => {
+  assert.notEqual(runKey("kbo-2026"), runKey("epl-2526"));
 });
