@@ -21,6 +21,19 @@ const BASE = `https://data.fotmob.com/stats/${LEAGUE_ID}/season/${SEASON_ID}`;
 const MIN_MINS = 1500;
 
 /**
+ * 등급을 가를 때 골+도움에 얹는 가중치. 카드에 찍히는 평점은 원본 그대로 두고 순위에만 쓴다.
+ *
+ * FotMob 평점은 포지션 기대치 대비 상대평가라, 골을 많이 넣어도 그 포지션에서 기대되는 다른
+ * 일(도움·기회창출)을 못 하면 낮게 나온다. 주니오르 크루피가 33경기 13골 0도움인데 공격형MF
+ * 25명 중 17위로 커먼이었다.
+ *
+ * 0.01은 골+도움 10당 0.1점이다. 평점 폭이 1.8(6.2~8.03)이라 순위를 뒤집을 정도는 아니고
+ * 비슷한 평점끼리의 앞뒤를 공격 기여로 가르는 무게다. 0.02를 넘기면 골+도움이 9뿐인
+ * 데클란 라이스가 레전드에서 밀리고, 0.05면 레전드가 윙어·스트라이커로 쏠린다.
+ */
+const GOAL_BONUS = 0.01;
+
+/**
  * 레전드로 올라가려면 넘어야 하는 출전(분). 평점은 90분당 평균이라 적게 뛴 선수도 높게 나온다.
  * 로드리가 1513분(21경기)만 뛰고 7.51로 전체 6위였는데, 38경기를 버틴 선수와 같은 줄에
  * 세우기엔 표본이 얇다. 2000분 = 약 22경기.
@@ -135,7 +148,7 @@ export const EPL: SportConfig = {
   miniStatKeys: (role) => MINI_STATS[role as Role] ?? ["골", "도움"],
   guide: {
     pool: `25/26 시즌 기록 중 ${MIN_MINS}분 이상 뛴 선수만 나와요.`,
-    tier: "포지션(골키퍼·센터백·풀백·미드필더·공격형MF·윙어·스트라이커) 안에서 FotMob 평점 순위로 갈라요. 그래서 골키퍼도 풀백도 레전드가 될 수 있어요. 평점은 우리가 만든 값이 아니라 FotMob 이 매긴 실제 평점이에요.",
+    tier: `레전드는 포지션을 가리지 않고 전체에서 상위 3%만 나와요(${LEGEND_MIN_MINS}분 이상 뛴 선수 중에서). 에픽 아래는 포지션(골키퍼·센터백·풀백·미드필더·윙어·스트라이커) 안에서 갈라서, 골키퍼도 풀백도 에픽이 될 수 있어요. 순위는 FotMob 이 매긴 실제 평점에 골·도움을 조금 얹어 정해요.`,
   },
 };
 
@@ -332,7 +345,8 @@ export function computeEplPool(ratingList: StatRow[], stats: StatMaps, minMins =
       pos: POS_LABEL[role],
       back: hero?.back ?? "",
       role,
-      rating: r.StatValue,
+      // 등급과 대결 판정에 쓰는 값. 카드 8칸의 "평점" 칸은 보정 없는 원본을 보여준다.
+      rating: r.StatValue + GOAL_BONUS * ((get("goals")?.StatValue ?? 0) + (get("goal_assist")?.StatValue ?? 0)),
       subName: r.ParticipantName,
       headline: headlineOf(role, get, r),
       stats: statsOf(role, get, r),

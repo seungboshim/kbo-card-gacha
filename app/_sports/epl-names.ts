@@ -153,7 +153,7 @@ export const KOREAN_NAME: Record<string, string> = {
   "Martin Dúbravka": "마르틴 두브라프카",
   "Martín Zubimendi": "마르틴 수비멘디",
   "Mateus Fernandes": "마테우스 페르난데스",
-  "Mateus Mané": "마테우스 Mané",
+  "Mateus Mané": "마테우스 마네", // 네이버가 성을 영문("마테우스 Mané")으로 줘서 직접 적었다
   "Matheus Cunha": "마테우스 쿠냐",
   "Matheus Nunes": "마테우스 누네스",
   "Mathias Jensen": "마티아스 옌센",
