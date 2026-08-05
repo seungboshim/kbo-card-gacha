@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev -- -p 3100   # 개발 서버. 로컬 확인은 3100 포트로 연다
 npm run build        # 프로덕션 빌드 (타입체크 겸함, 별도 tsc 스크립트 없음)
 npm run lint         # eslint (flat config, 인자 없이)
-npm test             # node --test deck.test.ts battle.test.ts snapshot.test.ts
+npm test             # node --test deck.test.ts battle.test.ts snapshot.test.ts economy.test.ts
 node scripts/snapshot.ts   # 카드 풀을 data/*.json 으로 다시 굽는다 (깃액션이 매일 자동 실행)
 
 node --test deck.test.ts                              # 파일 하나만
@@ -24,12 +24,15 @@ node --test --test-name-pattern "레전드" deck.test.ts   # 테스트 하나만
 
 ## 구조
 
-두 층으로 갈린다.
+세 층으로 갈린다.
 
 - `app/_game/*` — 종목과 무관한 부분. `Card` 타입, 등급 표(`TIERS`), 뽑기(`drawPack`),
   대결 규칙(`battle.ts`), 카드 UI(`card.tsx`), 게임 화면 전체(`game.tsx`)
 - `app/_sports/*` — 종목별 어댑터. 성적 API 호출, rating 계산, 표시 문구. 각각 `SportConfig`
   상수(`KBO`, `EPL`)와 `get{Kbo,Epl}Pool(): Promise<Card[]>` 를 내보낸다
+- `app/_solo/*` — 혼자서 모드의 규칙. 화면 없이 순수 함수만 둔다. `economy.ts` 는 숫자
+  (팩·판매가·강화 확률·비용·파산), `vault.ts` 는 보관함 모양(칸 묶기와 갱신),
+  `storage.ts` 는 런 저장. 상수를 한 곳에 모아둬 플레이하며 조이기 쉽다
 
 `_` 로 시작하는 폴더는 Next.js 라우팅에서 빠진다.
 

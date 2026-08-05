@@ -227,3 +227,59 @@ test("KBO 최소 출전: 타자는 124타석, 선발 31이닝, 불펜 21이닝�
   assert.equal(meetsMinimum({}, "불펜", 21), true);
   assert.equal(meetsMinimum({}, "불펜", 20.9), false);
 });
+
+test("drawOne: 확률표를 주면 그걸 따른다", () => {
+  const pool = [card("c", 1, "COMMON"), card("l", 5, "LEGEND")];
+  const byTier = groupByTier(pool);
+  // 레전드 100%, 나머지 0% 인 표를 주면 항상 레전드가 나와야 한다
+  const onlyLegend = { LEGEND: 100, EPIC: 0, RARE: 0, UNCOMMON: 0, COMMON: 0 };
+  for (let i = 0; i < 20; i++) {
+    assert.equal(drawOne(byTier, () => i / 20, onlyLegend).tier, "LEGEND");
+  }
+});
+
+test("drawPack: 확률표를 주면 그걸 따른다", () => {
+  const pool = [card("c1", 1, "COMMON"), card("c2", 1, "COMMON"), card("l", 5, "LEGEND")];
+  const byTier = groupByTier(pool);
+  const onlyCommon = { LEGEND: 0, EPIC: 0, RARE: 0, UNCOMMON: 0, COMMON: 100 };
+  // 상수 rnd(()=>0.5)를 쓰면 매 호출이 같은 카드를 반환해 20회 재시도가 바로 소진되고,
+  // "남은 풀에서 채우기"(등급 무관, 원래부터 있던 동작)로 빠져 LEGEND가 새어든다.
+  // 그 fallback 은 의도적으로 그대로 두는 로직이라(계획 문서 참고), 여기선 값을 바꿔가며
+  // 굴려서 rates 를 따르는 정상 경로를 검증한다.
+  let n = 0;
+  const rnd = () => (n++ % 4) / 4;
+  const picked = drawPack(byTier, 2, rnd, onlyCommon);
+  assert.equal(picked.length, 2);
+  assert.ok(picked.every((c) => c.tier === "COMMON"));
+});
+
+test("drawOne: 확률표를 안 주면 TIERS 를 쓴다", () => {
+  // 기존 동작이 그대로인지 확인한다. 커먼만 있는 풀이면 뭘 굴려도 커먼이다.
+  const byTier = groupByTier([card("c", 1, "COMMON")]);
+  assert.equal(drawOne(byTier, () => 0.99).tier, "COMMON");
+});
+
+test("확률 0 인 등급은 재시도가 바닥나도 안 나온다", () => {
+  // 상수 난수를 주면 drawOne 이 늘 같은 카드를 뱉어 20회 재시도가 바로 바닥난다.
+  // 그때 채우는 자리에서 확률 0 인 등급이 새어 나오면, 플래티넘 팩의
+  // "커먼이 안 나와요" 같은 약속이 조용히 깨진다.
+  const pool = [card("c1", 1, "COMMON"), card("c2", 1, "COMMON"), card("r1", 3, "RARE"), card("r2", 3, "RARE")];
+  const byTier = groupByTier(pool);
+  const noCommon = { LEGEND: 0, EPIC: 0, RARE: 100, UNCOMMON: 0, COMMON: 0 };
+  const picked = drawPack(byTier, 2, () => 0.5, noCommon);
+  assert.equal(picked.length, 2);
+  assert.ok(
+    picked.every((c) => c.tier === "RARE"),
+    `커먼이 새어 나왔다: ${picked.map((c) => c.tier).join(", ")}`,
+  );
+});
+
+test("확률 0 인 등급은 drawOne 의 마지막 폴백에서도 안 나온다", () => {
+  // 확률을 준 등급이 통째로 비어 있으면 아래에서부터 아무 등급이나 잡는데,
+  // 그때도 확률 0 인 등급은 건너뛰어야 한다.
+  const byTier = groupByTier([card("c", 1, "COMMON"), card("u", 2, "UNCOMMON")]);
+  const noCommon = { LEGEND: 50, EPIC: 50, RARE: 0, UNCOMMON: 0, COMMON: 0 };
+  // 레전드·에픽이 비었으므로 폴백으로 흘러간다. 확률 0 인 커먼·언커먼은 후보가 아니라
+  // 뽑을 게 없다.
+  assert.throws(() => drawOne(byTier, () => 0.5, noCommon), /카드 풀이 비어 있어요/);
+});
