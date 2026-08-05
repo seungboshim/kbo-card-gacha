@@ -102,7 +102,7 @@ export function assignTiers(cards: Omit<Card, "tier">[]): Card[] {
   return sorted.map((c, i) => {
     const p = (i + 1) / n;
     // 34명 미만이면 1위의 백분위(1/n)가 이미 3%를 넘어 레전드가 한 명도 안 나온다.
-    // 골키퍼(22명)나 공격수(29명)처럼 작은 역할군이 통째로 레전드를 잃으므로 1위는 항상 레전드로 둔다.
+    // 골키퍼(20명)나 스트라이커(22명)처럼 작은 역할군이 통째로 레전드를 잃으므로 1위는 항상 레전드로 둔다.
     const tier: TierKey = i === 0 ? "LEGEND" : (TIERS.find((t) => p <= t.pct) ?? TIERS[TIERS.length - 1]).key;
     return { ...c, tier };
   });

@@ -12,7 +12,7 @@ import {
   type TierKey,
 } from "./app/_game/deck.ts";
 import { parseInnings } from "./app/_sports/kbo.ts";
-import { computeEplPool } from "./app/_sports/epl.ts";
+import { computeEplPool, type StatMaps, type StatRow } from "./app/_sports/epl.ts";
 
 const card = (id: string, rating: number, tier: TierKey = "COMMON", role = "타자"): Card => ({
   id,
@@ -112,70 +112,95 @@ test("drawPack: 풀이 n보다 작으면 있는 만큼만 반환한다", () => {
   assert.equal(new Set(pack.map((c) => c.id)).size, 5);
 });
 
-test("EPL: 포지션별 rating 순서가 의도대로 나온다", () => {
+// FotMob 평점 목록 한 줄. 카드 하나를 만드는 데 필요한 최소 필드만 채운다.
+const fmRow = (id: number, name: string, code: number, rating: number, mins = 2000, extra: Partial<StatRow> = {}): StatRow => ({
+  ParticiantId: id,
+  ParticipantName: name,
+  TeamId: 9825,
+  TeamName: "Arsenal",
+  StatValue: rating,
+  MinutesPlayed: mins,
+  MatchesPlayed: 30,
+  Positions: [code],
+  ...extra,
+});
+/** 스탯 파일 하나를 흉내낸다. [선수ID, 값, 부제값] 목록을 받는다. */
+const fmStat = (rows: [number, number, number?][]): Map<number, StatRow> =>
+  new Map(rows.map(([id, v, sub]) => [id, { ...fmRow(id, String(id), 11, 0), StatValue: v, SubStatValue: sub }]));
+
+test("EPL: 포지션 코드가 7개 역할군으로 갈린다", () => {
   const rows = [
-    { playerId: "g1", playerName: "G1", position: "GK", minsPlayed: 700, cleanSheets: 19, saves: 0 },
-    { playerId: "g2", playerName: "G2", position: "GK", minsPlayed: 700, cleanSheets: 10, saves: 100 },
-    { playerId: "d1", playerName: "D1", position: "DF", minsPlayed: 2000, cleanSheets: 17, goals: 3, assists: 4 },
-    { playerId: "d2", playerName: "D2", position: "DF", minsPlayed: 2000, cleanSheets: 10, goals: 0, assists: 5 },
-    { playerId: "m1", playerName: "M1", position: "MF", minsPlayed: 2000, goals: 9, assists: 21, keyPasses: 0 },
-    { playerId: "m2", playerName: "M2", position: "MF", minsPlayed: 2000, goals: 15, assists: 4, keyPasses: 0 },
-    { playerId: "f1", playerName: "F1", position: "FW", minsPlayed: 2000, goals: 27, assists: 8 },
-    { playerId: "f2", playerName: "F2", position: "FW", minsPlayed: 2000, goals: 22, assists: 1 },
+    fmRow(1, "GK", 11, 7.2),
+    fmRow(2, "CB", 34, 7.1),
+    fmRow(3, "FB", 38, 7.0),
+    fmRow(4, "MF", 66, 7.5),
+    fmRow(5, "AM", 85, 8.0),
+    fmRow(6, "WG", 87, 7.3),
+    fmRow(7, "ST", 115, 7.6),
   ];
-  const pool = computeEplPool(rows);
-  const byRole = (role: string) => pool.filter((c) => c.role === role);
-  assert.equal(byRole("골키퍼")[0].name, "G1"); // 클린시트 19가 세이브 100보다 앞선다
-  assert.equal(byRole("수비수")[0].name, "D1");
-  assert.equal(byRole("미드필더")[0].name, "M1");
-  assert.equal(byRole("공격수")[0].name, "F1");
+  const pool = computeEplPool(rows, {});
+  assert.deepEqual(
+    pool.map((c) => c.role).sort(),
+    ["골키퍼", "공격형MF", "미드필더", "센터백", "스트라이커", "윙어", "풀백"],
+  );
+  // 알 수 없는 코드는 버린다(리그 데이터에 새 코드가 들어와도 카드가 깨지지 않게)
+  assert.equal(computeEplPool([fmRow(8, "??", 999, 7.0)], {}).length, 0);
 });
 
-test("EPL: 미드필더 활약도에 볼 회수 기여가 들어간다", () => {
-  const base = { position: "MF", minsPlayed: 2000 };
-  const rows = [
-    // 공격 포인트만 보면 공격형이 앞서지만, 수비 기여를 더하면 수비형이 앞선다
-    { ...base, playerId: "att", playerName: "공격형", goals: 4, assists: 5, keyPasses: 58, accurateTackles: 2, interceptions: 2, recoveries: 20 },
-    { ...base, playerId: "def", playerName: "수비형", goals: 4, assists: 5, keyPasses: 58, accurateTackles: 35, interceptions: 37, recoveries: 180 },
-  ];
-  const pool = computeEplPool(rows);
-  assert.equal(pool[0].name, "수비형");
-  assert.ok(pool[0].rating > pool[1].rating);
+test("EPL: 등급은 FotMob 평점 순위로만 갈린다", () => {
+  // 같은 역할군 5명. 평점만 다르고 다른 스탯은 없다.
+  const rows = [1, 2, 3, 4, 5].map((i) => fmRow(i, `P${i}`, 115, 6.0 + i * 0.1));
+  const pool = computeEplPool(rows, {});
+  assert.equal(pool[0].name, "P5"); // 6.5로 가장 높다
+  assert.equal(pool[0].tier, "LEGEND"); // 5명뿐이어도 1위는 레전드
+  assert.equal(pool[0].rating, 6.5);
+  assert.deepEqual(
+    pool.map((c) => c.name),
+    ["P5", "P4", "P3", "P2", "P1"],
+  );
 });
 
-test("EPL: 스탯 8칸이 모두 실제 기록이고 평점 칸이 없다", () => {
-  const rows = [
-    { playerId: "f1", playerName: "F1", position: "FW", minsPlayed: 2000, goals: 27, expectedGoals: 25.4, assists: 8 },
-    { playerId: "g1", playerName: "G1", position: "GK", minsPlayed: 700, cleanSheets: 5, saves: 90, goalsConceded: 30 },
-  ];
-  const pool = computeEplPool(rows);
+test("EPL: 최소 출전 1500분으로 갈린다", () => {
+  const rows = [fmRow(1, "In", 66, 7.0, 1500), fmRow(2, "Out", 66, 9.9, 1499)];
+  const pool = computeEplPool(rows, {});
+  assert.deepEqual(pool.map((c) => c.name), ["In"]); // 평점이 높아도 출전이 모자라면 빠진다
+});
+
+test("EPL: 스탯 8칸에 평점이 들어가고 없는 기록은 0으로 채운다", () => {
+  const rows = [fmRow(1, "ST", 115, 7.68), fmRow(2, "GK", 11, 7.24)];
+  const stats: StatMaps = {
+    goals: fmStat([[1, 27]]),
+    goal_assist: fmStat([[1, 8, 2.8]]),
+    expected_goals: fmStat([[1, 25.4]]),
+    clean_sheet: fmStat([[2, 19]]),
+    _save_percentage: fmStat([[2, 73]]),
+  };
+  const pool = computeEplPool(rows, stats);
   for (const c of pool) {
     assert.equal(c.stats.length, 8);
-    assert.ok(
-      !c.stats.some((s) => s.k === "평점" || s.k === "지수"),
-      `합성 활약도가 스탯 칸에 노출됐다: ${c.stats.map((s) => s.k).join(", ")}`,
-    );
+    assert.equal(c.stats.at(-1)!.k, "평점"); // 합성값이 아니라 FotMob 실제 평점이라 감추지 않는다
   }
-  const fw = pool.find((c) => c.role === "공격수")!;
-  assert.equal(fw.stats.find((s) => s.k === "xG차")!.v, "+1.6"); // 27골 - xG 25.4
+  const st = pool.find((c) => c.role === "스트라이커")!;
+  assert.equal(st.stats.find((s) => s.k === "골")!.v, "27");
+  assert.equal(st.stats.find((s) => s.k === "xG")!.v, "25.4");
+  assert.equal(st.stats.at(-1)!.v, "7.68");
+  assert.equal(st.stats.find((s) => s.k === "유효슛")!.v, "0.0"); // 파일에 없으면 0
   const gk = pool.find((c) => c.role === "골키퍼")!;
-  assert.equal(gk.stats.find((s) => s.k === "선방률")!.v, "75%"); // 90 / (90+30)
+  assert.equal(gk.stats.find((s) => s.k === "클린시트")!.v, "19");
+  assert.equal(gk.stats.find((s) => s.k === "선방률")!.v, "73%");
 });
 
-test("EPL: 최소 출전 필터가 GK 600 / 나머지 1500으로 갈린다", () => {
-  const rows = [
-    { playerId: "g-in", playerName: "GIn", position: "GK", minsPlayed: 600, cleanSheets: 1 },
-    { playerId: "g-out", playerName: "GOut", position: "GK", minsPlayed: 599, cleanSheets: 1 },
-    { playerId: "d-in", playerName: "DIn", position: "DF", minsPlayed: 1500, cleanSheets: 1 },
-    { playerId: "d-out", playerName: "DOut", position: "DF", minsPlayed: 1499, cleanSheets: 1 },
-    { playerId: "m-in", playerName: "MIn", position: "MF", minsPlayed: 1500, goals: 1 },
-    { playerId: "m-out", playerName: "MOut", position: "MF", minsPlayed: 1499, goals: 1 },
-    { playerId: "f-in", playerName: "FIn", position: "FW", minsPlayed: 1500, goals: 1 },
-    { playerId: "f-out", playerName: "FOut", position: "FW", minsPlayed: 1499, goals: 1 },
-  ];
-  const ids = new Set(computeEplPool(rows).map((c) => c.id));
-  assert.ok(ids.has("g-in") && !ids.has("g-out"));
-  assert.ok(ids.has("d-in") && !ids.has("d-out"));
-  assert.ok(ids.has("m-in") && !ids.has("m-out"));
-  assert.ok(ids.has("f-in") && !ids.has("f-out"));
+test("EPL: 한글 이름이 있으면 바꾸고 없으면 영문 그대로 둔다", () => {
+  const rows = [fmRow(1, "Erling Haaland", 115, 7.68), fmRow(2, "Nobody Unknown", 115, 7.0)];
+  const pool = computeEplPool(rows, {});
+  assert.equal(pool.find((c) => c.id === "1")!.name, "엘링 홀란");
+  assert.equal(pool.find((c) => c.id === "2")!.name, "Nobody Unknown");
+});
+
+test("EPL: 팀 이름과 이미지 주소를 채운다", () => {
+  const pool = computeEplPool([fmRow(737066, "Erling Haaland", 115, 7.68, 2000, { TeamId: 8456, TeamName: "Manchester City" })], {});
+  const c = pool[0];
+  assert.equal(c.team, "맨체스터 시티");
+  assert.equal(c.teamLogo, "https://images.fotmob.com/image_resources/logo/teamlogo/8456.png");
+  assert.equal(c.photo, "https://images.fotmob.com/image_resources/playerimages/737066.png");
 });
