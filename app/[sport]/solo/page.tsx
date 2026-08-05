@@ -12,11 +12,11 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ sport: string }> }) {
   const { sport } = await params;
   const s = SPORT[sport as keyof typeof SPORT];
-  return { title: s ? `${s.name} 여럿이서 · 시즌 고르기` : "카드깡" };
+  return { title: s ? `${s.name} 혼자서 · 시즌 고르기` : "카드깡" };
 }
 
 export default async function Page({ params }: { params: Promise<{ sport: string }> }) {
   const { sport } = await params;
   if (!(sport in SPORT)) notFound();
-  return <SeasonList sport={sport as keyof typeof SPORT} mode="multi" modeLabel="여럿이서" />;
+  return <SeasonList sport={sport as keyof typeof SPORT} mode="solo" modeLabel="혼자서" />;
 }
