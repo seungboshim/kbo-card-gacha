@@ -10,7 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev -- -p 3100   # 개발 서버. 로컬 확인은 3100 포트로 연다
 npm run build        # 프로덕션 빌드 (타입체크 겸함, 별도 tsc 스크립트 없음)
 npm run lint         # eslint (flat config, 인자 없이)
-npm test             # node --test deck.test.ts battle.test.ts
+npm test             # node --test deck.test.ts battle.test.ts snapshot.test.ts
+node scripts/snapshot.ts   # 카드 풀을 data/*.json 으로 다시 굽는다 (깃액션이 매일 자동 실행)
 
 node --test deck.test.ts                              # 파일 하나만
 node --test --test-name-pattern "레전드" deck.test.ts   # 테스트 하나만
@@ -71,10 +72,19 @@ node --test --test-name-pattern "레전드" deck.test.ts   # 테스트 하나만
 
 ### 외부 데이터
 
+카드 풀은 런타임에 받지 않는다. `scripts/snapshot.ts` 가 완성된 `Card[]` 를
+`data/<종목>-<시즌>.json` 으로 구워 저장소에 커밋하고, 앱은 `app/_sports/pools.ts` 로
+그 JSON 만 읽는다. 갱신은 `.github/workflows/daily.yml` 이 매일 돌린다.
+
+- 시즌 목록은 `app/_sports/seasons.ts` 다. 액션은 `live: true` 인 시즌만 다시 굽는다
+- 시즌이 끝나면 `live: false` 로 바꾼다. 그러면 파일이 그 자리에 굳는다
+- 시즌을 추가하면 `seasons.ts` 와 `pools.ts` 에 한 줄씩 더한다
 - KBO: Naver 스포츠 기록 API(비공식·무인증). 시즌 상수는 `kbo.ts` 의 `SEASON`
 - EPL: FotMob 통계 CDN. 시즌마다 `epl.ts` 의 `SEASON_ID` 를 갈아야 한다(찾는 법은 주석에)
 
 선수 사진·팀 로고 호스트는 `next.config.ts` 의 `remotePatterns` 에 등록돼 있어야 뜬다.
+
+등급이 어제 대비 바뀐 카드에는 `prevTier` 가 붙는다. 계산은 `scripts/prev-tier.ts` 다.
 
 ## 코드 관행
 
