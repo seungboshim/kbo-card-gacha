@@ -71,11 +71,24 @@ export function groupByTier(pool: Card[]): Record<TierKey, Card[]> {
   return out;
 }
 
-/** 등급을 확률로 먼저 굴리고, 그 등급 안에서 균등하게 한 명 뽑는다. 빈 등급이면 아래 등급으로 흘린다. */
-export function drawOne(byTier: Record<TierKey, Card[]>, rnd: () => number = Math.random): Card {
-  let roll = rnd() * TIERS.reduce((s, t) => s + t.rate, 0);
+/** 등급별 뽑기 확률(%). 안 주면 TIERS 의 rate 를 쓴다. */
+export type Rates = Record<TierKey, number>;
+
+const DEFAULT_RATES = Object.fromEntries(TIERS.map((t) => [t.key, t.rate])) as Rates;
+
+/**
+ * 등급을 확률로 먼저 굴리고, 그 등급 안에서 균등하게 한 명 뽑는다. 빈 등급이면 아래 등급으로 흘린다.
+ *
+ * rates 를 받는 이유: 혼자서 모드는 팩마다 확률표가 다른데 중복 방지 로직은 같이 쓰고 싶다.
+ */
+export function drawOne(
+  byTier: Record<TierKey, Card[]>,
+  rnd: () => number = Math.random,
+  rates: Rates = DEFAULT_RATES,
+): Card {
+  let roll = rnd() * TIERS.reduce((s, t) => s + rates[t.key], 0);
   for (const t of TIERS) {
-    roll -= t.rate;
+    roll -= rates[t.key];
     const bucket = byTier[t.key];
     if (roll < 0 && bucket.length) return bucket[Math.floor(rnd() * bucket.length) % bucket.length];
   }
@@ -87,13 +100,18 @@ export function drawOne(byTier: Record<TierKey, Card[]>, rnd: () => number = Mat
 }
 
 /** n장을 중복 없이 뽑는다. 장당 20회 재시도하고, 그래도 겹치면 남은 풀에서 아무거나 채운다. */
-export function drawPack(byTier: Record<TierKey, Card[]>, n: number, rnd: () => number = Math.random): Card[] {
+export function drawPack(
+  byTier: Record<TierKey, Card[]>,
+  n: number,
+  rnd: () => number = Math.random,
+  rates: Rates = DEFAULT_RATES,
+): Card[] {
   const all = Object.values(byTier).flat();
   const used = new Set<string>();
   const picked: Card[] = [];
   for (let i = 0; i < n && used.size < all.length; i++) {
-    let card = drawOne(byTier, rnd);
-    for (let attempt = 0; used.has(card.id) && attempt < 20; attempt++) card = drawOne(byTier, rnd);
+    let card = drawOne(byTier, rnd, rates);
+    for (let attempt = 0; used.has(card.id) && attempt < 20; attempt++) card = drawOne(byTier, rnd, rates);
     if (used.has(card.id)) card = all.find((c) => !used.has(c.id))!;
     used.add(card.id);
     picked.push(card);

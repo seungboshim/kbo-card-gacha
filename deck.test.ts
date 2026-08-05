@@ -227,3 +227,34 @@ test("KBO 최소 출전: 타자는 124타석, 선발 31이닝, 불펜 21이닝�
   assert.equal(meetsMinimum({}, "불펜", 21), true);
   assert.equal(meetsMinimum({}, "불펜", 20.9), false);
 });
+
+test("drawOne: 확률표를 주면 그걸 따른다", () => {
+  const pool = [card("c", 1, "COMMON"), card("l", 5, "LEGEND")];
+  const byTier = groupByTier(pool);
+  // 레전드 100%, 나머지 0% 인 표를 주면 항상 레전드가 나와야 한다
+  const onlyLegend = { LEGEND: 100, EPIC: 0, RARE: 0, UNCOMMON: 0, COMMON: 0 };
+  for (let i = 0; i < 20; i++) {
+    assert.equal(drawOne(byTier, () => i / 20, onlyLegend).tier, "LEGEND");
+  }
+});
+
+test("drawPack: 확률표를 주면 그걸 따른다", () => {
+  const pool = [card("c1", 1, "COMMON"), card("c2", 1, "COMMON"), card("l", 5, "LEGEND")];
+  const byTier = groupByTier(pool);
+  const onlyCommon = { LEGEND: 0, EPIC: 0, RARE: 0, UNCOMMON: 0, COMMON: 100 };
+  // 상수 rnd(()=>0.5)를 쓰면 매 호출이 같은 카드를 반환해 20회 재시도가 바로 소진되고,
+  // "남은 풀에서 채우기"(등급 무관, 원래부터 있던 동작)로 빠져 LEGEND가 새어든다.
+  // 그 fallback 은 의도적으로 그대로 두는 로직이라(계획 문서 참고), 여기선 값을 바꿔가며
+  // 굴려서 rates 를 따르는 정상 경로를 검증한다.
+  let n = 0;
+  const rnd = () => (n++ % 4) / 4;
+  const picked = drawPack(byTier, 2, rnd, onlyCommon);
+  assert.equal(picked.length, 2);
+  assert.ok(picked.every((c) => c.tier === "COMMON"));
+});
+
+test("drawOne: 확률표를 안 주면 TIERS 를 쓴다", () => {
+  // 기존 동작이 그대로인지 확인한다. 커먼만 있는 풀이면 뭘 굴려도 커먼이다.
+  const byTier = groupByTier([card("c", 1, "COMMON")]);
+  assert.equal(drawOne(byTier, () => 0.99).tier, "COMMON");
+});
