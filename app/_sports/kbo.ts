@@ -33,15 +33,20 @@ export const KBO: SportConfig = {
   teamColor: TEAM_COLOR,
   miniStatKeys: (role) => (role === "타자" ? ["타율", "WAR"] : ["ERA", "WAR"]),
   guide: {
-    pool: `${SEASON} 시즌 기록 중 최소 출전을 넘긴 선수만 나와요. 팀 경기수에 비례해서 타자는 경기당 1.2타석, 선발은 0.3이닝, 불펜은 0.2이닝이 기준이에요.`,
+    pool: `${SEASON} 시즌 기록 중 타자는 124타석, 선발은 31이닝, 불펜은 21이닝 이상 뛴 선수만 나와요.`,
     tier: "역할군(타자·선발·불펜) 안에서 순위로 갈라요. 그래서 마무리투수도 레전드가 될 수 있어요. 투수는 WAR 그대로, 타자는 WAR과 타격 성적을 반씩 봐요.",
   },
 };
 
-// 최소 출전 기준. 시즌 진행률을 따라가도록 팀 경기수에 비례해서 잡는다.
-// 규정타석(경기×3.1) / 규정이닝(경기×1.0)보다 훨씬 느슨하게 둬서 시즌 초에도 풀이 비지 않게 한다.
-const MIN_PA_PER_GAME = 1.2;
-const MIN_IP_PER_GAME = { 선발: 0.3, 불펜: 0.2 } as const;
+// 최소 출전 기준. 2026-08-05 시점의 팀 경기수 103 에 예전 비율(타자 1.2타석/경기,
+// 선발 0.3이닝, 불펜 0.2이닝)을 곱해 나온 값으로 굳혔다. 경기수 상위 분포가
+// 103·101·101·101·100 이라 최다 출전이 이상치가 아닌 것도 확인했다.
+//
+// 비례식으로 두면 시즌이 갈수록 커트가 올라가서, 보관함에 담아둔 선수가 다음에 열었을 때
+// 풀에서 빠질 수 있다. 누적 기록은 줄지 않으므로 고정해두면 한 번 들어온 선수는
+// 부상으로 시즌을 접어도 계속 남는다.
+const MIN_PA = 124;
+const MIN_IP = { 선발: 31, 불펜: 21 } as const;
 
 type Row = Record<string, unknown>;
 
@@ -94,6 +99,11 @@ function baseCard(row: Row, role: Role, rating: number): Omit<Card, "tier" | "he
 /** 타석. 응답에 PA 필드가 없어 타수+볼넷+몸에맞는공으로 계산한다. */
 export function plateApp(row: Row): number {
   return (num(row.hitterAb) ?? 0) + (num(row.hitterBb) ?? 0) + (num(row.hitterHp) ?? 0);
+}
+
+/** 최소 출전을 넘겼는지. ip 는 투수만 쓰고 타자일 때는 무시한다. */
+export function meetsMinimum(row: Row, role: Role, ip: number): boolean {
+  return role === "타자" ? plateApp(row) >= MIN_PA : ip >= MIN_IP[role];
 }
 
 /** 리그 평균 wOBA. 타석으로 가중해 구한다. */
@@ -195,6 +205,8 @@ function toPitcher(row: Row, role: "선발" | "불펜", ip: number): Omit<Card, 
 async function fetchStats(playerType: "HITTER" | "PITCHER"): Promise<Row[]> {
   const res = await fetch(`${BASE}/${SEASON}/players?playerType=${playerType}&pageSize=500`, {
     headers: { "User-Agent": "Mozilla/5.0", Referer: "https://m.sports.naver.com/" },
+    // 이제 스냅샷 스크립트만 이 함수를 부른다. 순수 Node 에서는 next 옵션이 무시되지만,
+    // 앱이 다시 직접 호출하게 될 때를 위해 남겨둔다.
     next: { revalidate: 3600 },
   });
   if (!res.ok) throw new Error(`Naver 기록 API ${playerType} 응답 ${res.status}`);
@@ -215,12 +227,9 @@ export function parseInnings(raw: unknown): number {
 export async function getKboPool(): Promise<Card[]> {
   const [hitterRows, pitcherRows] = await Promise.all([fetchStats("HITTER"), fetchStats("PITCHER")]);
 
-  // 팀 경기수: 응답이 따로 주지 않아 최다 출전 경기수로 근사한다. 매 경기 나오는 선수가 팀마다 있다.
-  // 시즌 시작 전이면 0이 되어 커트도 0이 된다(전원 통과).
-  const teamGames = Math.max(0, ...hitterRows.map((r) => num(r.hitterGameCount) ?? 0));
   const lgWoba = leagueWoba(hitterRows);
 
-  const hitters = hitterRows.filter((r) => plateApp(r) >= teamGames * MIN_PA_PER_GAME).map((r) => toHitter(r, lgWoba));
+  const hitters = hitterRows.filter((r) => meetsMinimum(r, "타자", 0)).map((r) => toHitter(r, lgWoba));
 
   // 투수: 경기당 이닝 3 이상이면 선발, 미만이면 불펜.
   const starters: Omit<Card, "tier">[] = [];
@@ -230,7 +239,7 @@ export async function getKboPool(): Promise<Card[]> {
     const games = num(row.pitcherGameCount) ?? 0;
     const ipPerGame = games > 0 ? ip / games : 0;
     const role: "선발" | "불펜" = ipPerGame >= 3 ? "선발" : "불펜";
-    if (ip >= teamGames * MIN_IP_PER_GAME[role]) (role === "선발" ? starters : relievers).push(toPitcher(row, role, ip));
+    if (meetsMinimum(row, role, ip)) (role === "선발" ? starters : relievers).push(toPitcher(row, role, ip));
   }
 
   // 등급은 역할군(타자/선발/불펜) 내 WAR 백분위로 각각 매긴다.

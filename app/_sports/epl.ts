@@ -195,6 +195,8 @@ const STAT_FILES = [
 async function fetchStat(name: string): Promise<[string, Map<number, StatRow>]> {
   const res = await fetch(`${BASE}/${name}.json`, {
     headers: { "User-Agent": "Mozilla/5.0", Referer: "https://www.fotmob.com/" },
+    // 이제 스냅샷 스크립트만 이 함수를 부른다. 순수 Node 에서는 next 옵션이 무시되지만,
+    // 앱이 다시 직접 호출하게 될 때를 위해 남겨둔다.
     next: { revalidate: 3600 },
   });
   // 개별 스탯이 빠져도 카드의 다른 칸은 살아야 하므로 실패는 빈 맵으로 넘긴다.

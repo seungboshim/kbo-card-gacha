@@ -1,6 +1,8 @@
-// 종목 페이지는 서버에서 시즌 기록을 받아온 뒤에야 렌더를 시작한다(revalidate 3600).
-// 캐시가 식은 요청 하나는 그동안 화면이 비어서 멈춘 것처럼 보이길래 대기 화면을 둔다.
-// 루트에 두면 /kbo, /epl 처럼 자기 loading.tsx가 없는 하위 경로까지 같이 덮는다.
+// 라우트가 준비되는 동안 보여줄 대기 화면. 루트에 둬서 자기 loading.tsx 가 없는 하위 경로를
+// 다 덮는다.
+//
+// 지금은 안 보인다. 카드 풀을 저장소 JSON 에서 읽게 바뀌면서 /kbo, /epl 이 정적으로
+// 미리 만들어지기 때문이다. 나중에 요청 시점에 그리는 경로가 생기면 그때 다시 쓰인다.
 export default function Loading() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6">

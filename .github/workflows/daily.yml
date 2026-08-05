@@ -1,0 +1,42 @@
+name: 시즌 기록 갱신
+
+on:
+  # UTC 20:00 = KST 05:00. KBO 경기는 늦어도 자정 전에 끝나므로 그 뒤에 돈다.
+  schedule:
+    - cron: "0 20 * * *"
+  # 손으로도 돌릴 수 있게
+  workflow_dispatch:
+
+# 손으로 돌린 게 예약 실행과 겹치면 둘 다 커밋을 만들어 뒤에 오는 push 가 거부당한다.
+# 앞선 실행을 죽이지 않고 줄을 세운다.
+concurrency:
+  group: daily-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    # 네이버나 FotMob 이 응답을 안 주고 매달리면 기본 상한(6시간)까지 붙잡고 있는다.
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      # 의존성 없이 도는 스크립트라 npm ci 가 필요 없다.
+      - name: 스냅샷 굽기
+        run: node scripts/snapshot.ts
+
+      - name: 변경분 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          # 성적이 그대로면 변경분이 없다. 그때는 빈 커밋을 만들지 않고 넘어간다.
+          git diff --staged --quiet && echo "변경 없음" && exit 0
+          git commit -m "시즌 기록을 갱신한다"
+          git push
