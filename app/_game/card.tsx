@@ -62,6 +62,27 @@ export const STYLE: Record<
 
 const LABEL = Object.fromEntries(TIERS.map((t) => [t.key, t.label])) as Record<TierKey, string>;
 
+/**
+ * 강화 수치 칩의 색. 카드 등급이 아니라 강화 단계를 따라간다. 3칸씩 다섯 밴드다.
+ *
+ * 밴드 경계를 파괴가 시작되는 +7 에 맞췄다(금색부터). 색이 바뀌는 순간이 위험이
+ * 시작되는 순간이라 색 자체가 경고가 된다.
+ *
+ * 금속 질감 그라디언트를 쓰는 이유: 등급 배지는 평면 색이라, 칩도 평면 색으로 두면
+ * 에픽 노랑과 금색, 레전드 홀로와 무지개가 톤이 겹쳐 무엇이 등급이고 무엇이 강화인지
+ * 안 갈린다.
+ */
+const PLUS_BAND: { upTo: number; cls: string }[] = [
+  { upTo: 3, cls: "bg-gradient-to-b from-[#e0a878] to-[#a05a2c] text-[#3a1e0c]" },
+  { upTo: 6, cls: "bg-gradient-to-b from-[#f0f0f5] to-[#9a9aa8] text-[#2a2a33]" },
+  { upTo: 9, cls: "bg-gradient-to-b from-[#ffe680] to-[#d4a017] text-[#3d2c00]" },
+  { upTo: 12, cls: "bg-gradient-to-b from-[#a5f3fc] to-[#0e7490] text-[#062b33]" },
+  { upTo: 15, cls: "bg-[linear-gradient(115deg,#6ee7b7,#ffffff_30%,#d8b4fe_55%,#ffffff_75%,#7dd3fc)] text-[#1a1a2e]" },
+];
+
+const plusBand = (plus: number) =>
+  (PLUS_BAND.find((b) => plus <= b.upTo) ?? PLUS_BAND[PLUS_BAND.length - 1]).cls;
+
 // 구단 색 없는 teamId는 중립 회색.
 const NEUTRAL_TEAM_COLOR = "#52525b";
 
@@ -191,10 +212,7 @@ export function PlayerCard({
                   <span className="shrink-0 text-[11px] text-zinc-400 tabular-nums">{card.back}</span>
                 )}
                 {plus > 0 && (
-                  <span
-                    className={`shrink-0 rounded-md px-1.5 text-[11px] leading-relaxed font-black tabular-nums ring-1 ring-inset ${s.label}`}
-                    style={{ background: "rgba(9,9,11,.75)" }}
-                  >
+                  <span className={`shrink-0 rounded-md px-1.5 text-[11px] leading-relaxed font-black tabular-nums ${plusBand(plus)}`}>
                     +{plus}
                   </span>
                 )}
@@ -218,10 +236,7 @@ export function PlayerCard({
               <span className={`truncate font-bold ${size === "full" ? "text-lg" : "text-sm"}`}>{card.name}</span>
               {card.back && <span className="shrink-0 text-[11px] text-zinc-500 tabular-nums">{card.back}</span>}
               {plus > 0 && (
-                <span
-                  className={`shrink-0 rounded-md px-1.5 text-[11px] leading-relaxed font-black tabular-nums ring-1 ring-inset ${s.label}`}
-                  style={{ background: "rgba(9,9,11,.75)" }}
-                >
+                <span className={`shrink-0 rounded-md px-1.5 text-[11px] leading-relaxed font-black tabular-nums ${plusBand(plus)}`}>
                   +{plus}
                 </span>
               )}
