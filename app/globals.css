@@ -7,6 +7,15 @@ body {
     var(--font-geist-sans), "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
 }
 
+/* 길게 눌러 고르기에 들어갈 카드에 붙는다. iOS는 이미지 롱프레스에 저장 팝업을 띄우고
+   (touch-callout), 데스크톱은 길게 눌린 텍스트가 드래그로 잡힌다(user-select). 벤더 접두사가
+   붙은 속성이라 Tailwind 화살괄호 문법보다 이렇게 두는 게 더 안정적이다. */
+.pickable {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 @keyframes card-in {
   from {
     opacity: 0;

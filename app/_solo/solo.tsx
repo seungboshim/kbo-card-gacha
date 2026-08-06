@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PlayerCard } from "../_game/card";
 import { drawPack, groupByTier, type Card, type SportConfig } from "../_game/deck";
 import { KBO } from "../_sports/kbo";
 import { EPL } from "../_sports/epl";
 import { cardValue, type Pack } from "./economy";
-import { toSlots } from "./vault";
+import { takeFrom, toSlots, type SlotRef } from "./vault";
 import { loadRun, newRun, saveRun, type Run } from "./storage";
 import { Shop } from "./shop";
+import { VaultGrid } from "./vault-grid";
 
 const SPORTS: Record<SportConfig["key"], SportConfig> = { kbo: KBO, epl: EPL };
 
@@ -57,6 +57,20 @@ export default function Solo({
     }));
   }
 
+  // 골라진 칸마다 takeFrom 으로 실제 장수를 빼고, 뺀 만큼의 값을 합쳐 크레딧에 더한다.
+  function sell(picks: { ref: SlotRef; take: number }[]) {
+    setRun((r) => {
+      let vault = r.vault;
+      let total = 0;
+      for (const p of picks) {
+        const card = byId.get(p.ref.id);
+        if (card) total += cardValue(card.tier, p.ref.plus) * p.take;
+        vault = takeFrom(vault, p.ref, p.take);
+      }
+      return { ...r, vault, credits: r.credits + total };
+    });
+  }
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-8 px-4 py-6">
       <header className="flex items-center justify-between gap-4">
@@ -71,36 +85,7 @@ export default function Solo({
 
       <Shop credits={run.credits} onBuy={buy} />
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-bold tracking-wide text-zinc-500 uppercase">
-          보관함 <span className="text-zinc-600">{slots.length}칸 · {run.vault.length}장</span>
-        </h2>
-        {slots.length === 0 ? (
-          <p className="py-10 text-center text-sm text-zinc-600">아직 카드가 없어요. 팩을 사보세요.</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {slots.map((s) => {
-              const card = byId.get(s.id);
-              if (!card) return null;
-              return (
-                <div key={`${s.id}-${s.plus}`} className="flex flex-col gap-1.5">
-                  <PlayerCard card={card} sport={sport} size="mini" plus={s.plus} />
-                  <div className="flex items-center justify-between px-0.5">
-                    <span className="text-[11px] font-bold tabular-nums text-zinc-400">
-                      {cardValue(card.tier, s.plus).toLocaleString()}
-                    </span>
-                    {s.count > 1 && (
-                      <span className="rounded bg-white/7 px-1.5 text-[10px] font-bold text-zinc-500 tabular-nums">
-                        {s.count}장
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      <VaultGrid slots={slots} byId={byId} sport={sport} onSell={sell} />
     </main>
   );
 }
