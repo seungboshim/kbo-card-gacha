@@ -33,14 +33,28 @@ const GRADE_THEME: Record<"good" | "platinum", { base: string; band: string; sub
     // 바탕 맨 아래가 그라디언트 중 제일 짙은 남색이라, 위 PACK_THEME.epl과 같은 기준으로 밝은 글자.
     foot: "text-slate-200/85",
   },
-  // card.tsx STYLE.LEGEND의 홀로그램 그라디언트·holo-drift를 그대로 재사용한다(어휘를 새로 안 만든다).
-  // 흰색이 반이라 전체적으로 밝으므로, 배지가 밴드처럼 짙은 색이어야 "제일 비싼 팩"으로 읽힌다.
+  /*
+   * 위는 파스텔 스펙트럼, 아래로 갈수록 짙은 남색.
+   *
+   * 처음엔 레전드 카드의 무지개(흰색이 절반인 repeating-linear-gradient)를 그대로 가져왔는데,
+   * 폭 100px짜리 팩에서는 반복 주기(228px)가 한 바퀴도 안 돌아 연한 라벤더 한 덩어리로만
+   * 보였다. 짙은 남색인 고급팩보다 오히려 싸 보여서, 제일 비싼 팩이 제일 약한 꼴이 됐다.
+   * 주기를 px가 아닌 %로 잡아 팩 폭에 맞게 한 바퀴가 다 들어가게 고쳤다.
+   *
+   * to_bottom 인 이유는 글자다. 기울이면 밴드(위에서 38%)와 하단 표기(아래에서 11%) 자리에
+   * 어떤 색이 오는지가 팩 폭에 따라 달라진다. 세워두면 아래 끝이 항상 짙은 남색이라 하단
+   * 표기를 밝은 글자로 고정할 수 있다.
+   *
+   * holo-drift 로 어른거리게도 해봤는데 걷어냈다. 그러려면 흰 사선 층을 하나 얹어 가로로
+   * 흘려야 하는데, PackShell 맨 아래 "비닐 광택"이 이미 같은 사선이라 둘이 겹쳐 팩이
+   * 통째로 하얗게 떴다. 반짝임은 그 광택 하나로 충분하다.
+   */
   platinum: {
-    base: "bg-[repeating-linear-gradient(115deg,#6ee7b7_0px,#ffffff_38px,#d8b4fe_76px,#ffffff_114px,#7dd3fc_152px,#ffffff_190px,#6ee7b7_228px)] bg-[length:200%_200%] animate-[holo-drift_9s_ease-in-out_infinite]",
+    base: "bg-[linear-gradient(to_bottom,#bbf7d0_0%,#7dd3fc_20%,#c4b5fd_38%,#f0abfc_52%,#818cf8_66%,#3730a3_84%,#1e1b4b_100%)]",
     band: "bg-[#0b0b0f]",
-    sub: "text-cyan-200",
-    // 파스텔·흰색만 순환해 어두운 색조가 없다 → 애니메이션 내내 어두운 글자로 둬도 항상 읽힌다.
-    foot: "text-zinc-950/80",
+    sub: "text-fuchsia-300",
+    // 하단 표기가 앉는 자리(아래에서 11%)는 그라디언트 끝의 짙은 남색이라 밝은 글자가 맞다.
+    foot: "text-white/95",
   },
 };
 
