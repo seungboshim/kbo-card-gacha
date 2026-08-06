@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { useFocusTrap } from "./use-focus-trap";
 import { PlayerCard } from "../_game/card";
 import type { Card, SportConfig } from "../_game/deck";
 import { Coin } from "./coin";
@@ -9,15 +11,128 @@ import type { Run } from "./storage";
 import type { Owned } from "./vault";
 
 const FOCUS_RING = "outline-none focus-visible:ring-2 focus-visible:ring-white/70";
+// 카드를 여는 버튼은 vault-grid.tsx 의 SELECT_FOCUS 와 같은 이유로 outline 계열을 쓴다
+// (CLAUDE.md 근거). ring 이 아니라 outline 이라야 카드 자체의 등급 글로우와 안 부딪힌다.
+// outline-none 을 같이 쓰면 안 된다 — Tailwind v4 가 --tw-outline-style 을 none 으로
+// 고정해버려 focus-visible:outline-2 가 안 그려진다.
+const CARD_FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70";
+
+/** 최고 기록 한 장. byId 조회가 끝나 카드 데이터가 확정된 상태다. */
+type Entry = { owned: Owned; card: Card };
+
+const worth = (r: Entry) => cardValue(r.card.tier, r.owned.plus);
+
+/**
+ * 카드 한 장을 크게 보는 읽기 전용 다이얼로그.
+ *
+ * enlarged-card.tsx 를 재사용하지 않는다 — 그건 수량 핸들·팔기·강화 버튼이 붙어
+ * 있는데 판이 끝난 화면에서는 다 의미가 없다. 카드와 값만 보여준다.
+ *
+ * 포커스 패턴은 enlarged-card.tsx · upgrade-overlay.tsx 를 그대로 옮겼다: 열리면
+ * 닫기 버튼에 포커스, Escape·배경 클릭으로 닫힌다, 닫히면 열기 전 포커스로 복원한다.
+ * 복원은 setState 가 아니라 ref 로 하므로 react-hooks/set-state-in-effect 에 안 걸린다.
+ */
+function CardDetail({
+  entry,
+  sport,
+  onClose,
+}: {
+  entry: Entry;
+  sport: SportConfig;
+  onClose: () => void;
+}) {
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const lastFocusedRef = useRef<HTMLElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, true);
+
+  useEffect(() => {
+    lastFocusedRef.current = document.activeElement as HTMLElement | null;
+    closeBtnRef.current?.focus();
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      lastFocusedRef.current?.focus();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${entry.card.name} 카드 상세`}
+      onClick={onClose}
+      className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[2px]"
+    >
+      <div className="flex w-full max-w-xs flex-col items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <button
+          ref={closeBtnRef}
+          type="button"
+          onClick={onClose}
+          aria-label="닫기"
+          className={`flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-full bg-zinc-900 text-xl leading-none font-bold text-white/80 ring-1 ring-white/20 transition-colors hover:bg-zinc-800 hover:text-white ${FOCUS_RING}`}
+        >
+          ×
+        </button>
+        <PlayerCard card={entry.card} sport={sport} size="full" plus={entry.owned.plus} />
+        <Coin amount={worth(entry)} className="text-lg font-black text-amber-300" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 최고 기록 한 줄. 가치순·강화순 둘 다 같은 모양(mini 카드 + 값)이라 여기서 같이 그린다.
+ * 같은 카드가 두 줄에 다 나올 수 있다 — 실제로 양쪽 1등이면 그게 사실이라 그대로 둔다.
+ */
+function BestRow({
+  title,
+  items,
+  sport,
+  onSelect,
+}: {
+  title: string;
+  items: Entry[];
+  sport: SportConfig;
+  onSelect: (entry: Entry) => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2.5">
+      <h3 className="text-xs font-bold text-zinc-500">{title}</h3>
+      <div className="flex justify-center gap-3">
+        {items.map((entry) => (
+          <button
+            key={entry.owned.id}
+            type="button"
+            onClick={() => onSelect(entry)}
+            aria-label={`${entry.card.name} 카드 상세`}
+            className={`flex w-[100px] flex-col items-center gap-1 rounded-2xl ${CARD_FOCUS}`}
+          >
+            <PlayerCard card={entry.card} sport={sport} size="mini" plus={entry.owned.plus} />
+            <Coin amount={worth(entry)} className="text-[11px] font-bold text-zinc-400" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /**
  * 런 종료 화면. 파산(강제)과 "여기까지"(자발)를 가르는 필드가 Run 에 따로 없어도,
  * 끝난 시점의 credits·vault 로 isBankrupt 를 다시 재보면 어느 쪽인지 그대로 나온다 —
  * 파산 판정 자체가 이유다.
  *
- * run.best 는 이번 런에서 도달한 상위 다섯 기록(가치 내림차순)이다. 도감이라 vault 와
- * 다르다 — 강화 중에 카드가 터져도 지워지지 않는다. "+7까지 갔었다"가 이 모드의 성취다.
- * 다만 그 선수가 방출·은퇴로 풀에서 통째로 빠졌으면 화면에 그릴 수 없어 그 항목만
+ * run.best 는 이번 런에서 도달한 최고 기록 후보다(가치순·강화순 각 상위 BEST_KEEP
+ * 장의 합집합, solo.tsx 의 mergeBest 참고). 도감이라 vault 와 다르다 — 강화 중에
+ * 카드가 터져도 지워지지 않는다. 화면에는 그중 가치순 top3, 강화순 top3(같은 강화
+ * 수치는 가치 내림차순)를 한 줄씩 보여준다 — 다섯 장씩 두 줄이면 세로로 넘친다.
+ *
+ * 그 선수가 방출·은퇴로 풀에서 통째로 빠졌으면 화면에 그릴 수 없어 그 항목만
  * 건너뛴다.
  */
 export function Result({
@@ -32,10 +147,16 @@ export function Result({
   onRestart: () => void;
 }) {
   const bankrupt = isBankrupt(run.credits, run.vault.length);
-  const records = run.best
+  const records: Entry[] = run.best
     .map((o) => ({ owned: o, card: byId.get(o.id) }))
-    .filter((r): r is { owned: Owned; card: Card } => r.card != null);
-  const [top, ...rest] = records;
+    .filter((r): r is Entry => r.card != null);
+
+  const byValue = [...records].sort((a, b) => worth(b) - worth(a)).slice(0, 3);
+  const byPlus = [...records]
+    .sort((a, b) => b.owned.plus - a.owned.plus || worth(b) - worth(a))
+    .slice(0, 3);
+
+  const [selected, setSelected] = useState<Entry | null>(null);
 
   return (
     <div className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center gap-6 py-10 text-center">
@@ -44,29 +165,14 @@ export function Result({
             규칙 설명은 판정 직전에나 쓸모 있지, 끝난 뒤에는 김만 뺀다. */}
         <h2 className="text-xl font-black tracking-tight">{bankrupt ? "파산했어요!" : "여기까지!"}</h2>
         <p className="mt-1 text-sm text-zinc-400">
-          {bankrupt ? "팩 살 돈이 떨어졌어요." : "가장 높이 올린 카드들이에요."}
+          {bankrupt ? "팩 살 돈이 떨어졌어요." : "가장 값나가는 카드와 가장 많이 강화한 카드예요."}
         </p>
       </div>
 
-      {top ? (
-        <div className="flex flex-col items-center gap-5">
-          <div className="flex flex-col items-center gap-2">
-            <PlayerCard card={top.card} sport={sport} size="full" plus={top.owned.plus} />
-            <Coin
-              amount={cardValue(top.card.tier, top.owned.plus)}
-              className="text-lg font-black text-amber-300"
-            />
-          </div>
-          {rest.length > 0 && (
-            <div className="flex flex-wrap justify-center gap-3">
-              {rest.map(({ owned, card }) => (
-                <div key={`${owned.id}-${owned.plus}`} className="flex w-[100px] flex-col items-center gap-1">
-                  <PlayerCard card={card} sport={sport} size="mini" plus={owned.plus} />
-                  <Coin amount={cardValue(card.tier, owned.plus)} className="text-[11px] font-bold text-zinc-400" />
-                </div>
-              ))}
-            </div>
-          )}
+      {records.length > 0 ? (
+        <div className="flex w-full flex-col gap-6">
+          <BestRow title="가치순 최고 기록" items={byValue} sport={sport} onSelect={setSelected} />
+          <BestRow title="강화순 최고 기록" items={byPlus} sport={sport} onSelect={setSelected} />
         </div>
       ) : (
         // 뽑은 카드는 강화 여부와 상관없이 best 에 들어간다(solo.tsx 의 buy()).
@@ -91,6 +197,8 @@ export function Result({
           다시하기
         </button>
       </div>
+
+      {selected && <CardDetail entry={selected} sport={sport} onClose={() => setSelected(null)} />}
     </div>
   );
 }
