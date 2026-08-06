@@ -1,6 +1,29 @@
 "use client";
 
+import Image from "next/image";
 import type { SportConfig } from "./deck";
+
+/**
+ * 등급이 주어지면 CSS 그라디언트 대신 그려 넣은 배경 그림을 쓴다.
+ * `public/images/card-packs/<종목>-<등급>.png` 여섯 장. 912x1725 라 아래 aspect-[10/19] 와 맞는다.
+ *
+ * 그림을 깔 때는 종목 무늬(야구공 실밥 / 축구공)를 안 그린다. 그림 안에 이미 실밥과
+ * 구장이 들어 있어서 겹치면 지저분해진다.
+ *
+ * 여섯 장 모두 가운데와 아래가 짙은 남색이라, 워드마크 밴드와 하단 표기는 밝은 글자로
+ * 고정한다. 등급별로 색을 나누던 GRADE_THEME 의 글자색은 그림 위에서 안 맞아 안 쓴다.
+ *
+ * 밴드를 반투명으로 둔 이유: 꽉 찬 색으로 두면 그림 한가운데를 검은 판때기가 덮는다.
+ * 여섯 장 다 가운데가 비어 있게 그려져서(워드마크 자리로 그린 것이다) 살짝만 깔아도
+ * 글자가 읽힌다.
+ */
+const ART_TEXT = { band: "bg-black/45", sub: "text-white/75", foot: "text-white/90" };
+
+/**
+ * 그림을 깔 때 하단 표기가 앉는 높이. 그림 여섯 장 모두 아래 4분의 1쯤에 구장(다이아몬드,
+ * 관중석)이 그려져 있어서, 기본값 11% 로 두면 글자가 그 위에 얹혀 안 읽힌다.
+ */
+const ART_FOOT_BOTTOM = "bottom-[27%]";
 
 // 카드팩 색. 종목 색을 따라간다(KBO 노랑 계열, PL 보라 계열). 무늬는 PackShell이 종목별로 가른다.
 // grade가 없거나 "normal"이면 이 표를 그대로 쓴다 — 여럿이서 모드가 등급 개념이 없으니 항상 이 갈래다.
@@ -116,13 +139,26 @@ export function PackShell({
   note?: string;
 }) {
   const clipPath = clip === "left" ? CLIP_LEFT : clip === "right" ? CLIP_RIGHT : CLIP_WHOLE;
-  const t = grade === "good" || grade === "platinum" ? GRADE_THEME[grade] : PACK_THEME[sport.key];
+  const css = grade === "good" || grade === "platinum" ? GRADE_THEME[grade] : PACK_THEME[sport.key];
+  const t = grade ? { ...css, ...ART_TEXT } : css;
   return (
     <div
-      className={`absolute inset-0 overflow-hidden ${t.base} ${dim ? "brightness-[.45]" : ""} ${animateClass ?? ""}`}
+      className={`absolute inset-0 overflow-hidden ${grade ? "bg-[#0b1020]" : css.base} ${dim ? "brightness-[.45]" : ""} ${animateClass ?? ""}`}
       style={{ clipPath }}
     >
-      {sport.key === "epl" ? (
+      {/* 그림이 뜨기 전에는 밑색(#0b1020)이 보인다. 그림 여섯 장이 다 짙은 남색 바탕이라
+          같은 색으로 맞춰두면 로딩 중에도 팩 모양이 안 깨진다. */}
+      {grade && (
+        <Image
+          src={`/images/card-packs/${sport.key}-${grade}.png`}
+          alt=""
+          fill
+          sizes="(max-width: 640px) 33vw, 140px"
+          className="object-cover"
+        />
+      )}
+
+      {grade ? null : sport.key === "epl" ? (
         /* 축구공: 가운데 오각형과 거기서 뻗은 다섯 개 선. 실제 축구공 무늬를 다 그리지 않아도
            이 조합이면 축구공으로 읽힌다. 팩보다 크게 잡아 무늬가 잘려 나가게 둔다. */
         <svg
@@ -158,7 +194,7 @@ export function PackShell({
 
       {/* 하단 표기 */}
       <div
-        className={`absolute inset-x-0 bottom-[11%] text-center text-[7px] leading-tight font-bold sm:text-[9px] ${t.foot}`}
+        className={`absolute inset-x-0 text-center text-[7px] leading-tight font-bold sm:text-[9px] ${grade ? ART_FOOT_BOTTOM : "bottom-[11%]"} ${t.foot}`}
       >
         선수 카드 {packSize}장
         <br />
