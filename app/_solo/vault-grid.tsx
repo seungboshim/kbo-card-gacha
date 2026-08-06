@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useFocusTrap } from "./use-focus-trap";
-import { PlayerCard } from "../_game/card";
+import { useEffect, useState } from "react";
+import { EnlargedCard } from "./enlarged-card";
 import type { Card, SportConfig } from "../_game/deck";
 import { Coin } from "./coin";
 import { cardValue } from "./economy";
@@ -16,6 +15,8 @@ const keyOf = (ref: SlotRef) => `${ref.id}:${ref.plus}`;
 type Mode = "idle" | "picking";
 /** 칸 키 → 고른 장수. 0 장은 항목을 안 둔다(없으면 0 인 것과 같다). */
 type Selection = Record<string, number>;
+/** 판매 확인에 넘길 항목. 하단 바 고르기든 확대 화면이든 여기로 모인다. */
+type PendingSell = { ref: SlotRef; card: Card; take: number }[];
 
 /** 보관함 도감. 평상시엔 값과 장수, 고르기 중엔 수량 핸들. 판매·강화 진입점을 여기서 모두 다룬다. */
 export function VaultGrid({
@@ -40,36 +41,25 @@ export function VaultGrid({
   const [mode, setMode] = useState<Mode>("idle");
   const [selection, setSelection] = useState<Selection>({});
   const [enlarged, setEnlarged] = useState<Slot | null>(null);
-  // 판매 확인에 넘길 항목. null 이면 모달이 안 떠 있다.
-  const [pendingSell, setPendingSell] = useState<{ ref: SlotRef; card: Card; take: number }[] | null>(null);
-
-  const closeBtnRef = useRef<HTMLButtonElement>(null);
-  const lastFocusedRef = useRef<HTMLElement | null>(null);
-  const enlargeRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(enlargeRef, enlarged !== null);
-
-  // 확대 오버레이 포커스 관리. game.tsx 의 overlayCard 패턴과 같다.
-  useEffect(() => {
-    if (!enlarged) return;
-    lastFocusedRef.current = document.activeElement as HTMLElement | null;
-    closeBtnRef.current?.focus();
-    return () => lastFocusedRef.current?.focus();
-  }, [enlarged]);
+  const [enlargedTake, setEnlargedTake] = useState(1);
+  // 하단 바에서 고른 것이든 확대 화면에서 정한 수량이든, 팔기를 누르면 여기로 모인다.
+  // selection 을 그대로 재활용하지 않는 이유: 확대 화면의 수량은 selection 에 없다.
+  // 억지로 밀어넣으면 판매를 취소했을 때 눈에 안 보이는 선택이 남아, 나중에 고르기
+  // 모드에 들어가는 순간 유령처럼 되살아난다.
+  const [pendingSell, setPendingSell] = useState<PendingSell | null>(null);
 
   function exitPicking() {
     setMode("idle");
     setSelection({});
   }
 
-  // Escape 는 위 레이어부터 하나씩 닫는다. 판매 확인 모달·강화 오버레이가 떠 있으면
-  // 그쪽이 자기 Escape 를 따로 처리하므로(SellModal, UpgradeOverlay) 여기서는 손대지
-  // 않는다. 강화 오버레이를 안 걸러주면 같은 Escape 한 번에 이 효과도 같이 반응해
-  // 고르기 덕(강화 버튼)까지 사라져서, 오버레이가 닫힐 때 되돌아갈 포커스 자리가 없어진다.
+  // Escape 는 위 레이어부터 하나씩 닫는다. 확대 화면은 EnlargedCard 가 자기 Escape 를
+  // 따로 처리하고(포커스 복원까지 그쪽으로 옮겼다), 판매 확인 모달·강화 오버레이도
+  // 각자 처리하므로(SellModal, UpgradeOverlay) 여기서는 고르기 모드만 본다.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key !== "Escape" || upgradeOpen) return;
-      if (enlarged) setEnlarged(null);
-      else if (mode === "picking" && pendingSell === null) exitPicking();
+      if (e.key !== "Escape" || upgradeOpen || enlarged) return;
+      if (mode === "picking" && pendingSell === null) exitPicking();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -167,7 +157,10 @@ export function VaultGrid({
                   onEnterPicking={() => enterPickingWith(ref)}
                   onToggle={() => toggle(ref, slot.count)}
                   onBump={(delta) => bump(ref, delta, slot.count)}
-                  onEnlarge={() => setEnlarged(slot)}
+                  onEnlarge={() => {
+                    setEnlarged(slot);
+                    setEnlargedTake(1);
+                  }}
                 />
               );
             })}
@@ -238,29 +231,24 @@ export function VaultGrid({
       )}
 
       {enlarged && byId.get(enlarged.id) && (
-        <div
-          ref={enlargeRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${byId.get(enlarged.id)!.name} 카드 확대`}
-          onClick={() => setEnlarged(null)}
-          className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[2px]"
-        >
-          <div className="flex w-full max-w-xs flex-col gap-2" onClick={(e) => e.stopPropagation()}>
-            <button
-              ref={closeBtnRef}
-              type="button"
-              onClick={() => setEnlarged(null)}
-              aria-label="닫기"
-              className={`flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-full bg-zinc-900 text-xl leading-none font-bold text-white/80 ring-1 ring-white/20 transition-colors hover:bg-zinc-800 hover:text-white ${FOCUS_RING}`}
-            >
-              ×
-            </button>
-            <div className="animate-[card-in_.5s_cubic-bezier(.2,.8,.2,1)_both]">
-              <PlayerCard card={byId.get(enlarged.id)!} sport={sport} size="full" plus={enlarged.plus} />
-            </div>
-          </div>
-        </div>
+        <EnlargedCard
+          slot={enlarged}
+          card={byId.get(enlarged.id)!}
+          sport={sport}
+          take={enlargedTake}
+          onTakeChange={setEnlargedTake}
+          onClose={() => setEnlarged(null)}
+          onSell={() => {
+            setPendingSell([
+              { ref: { id: enlarged.id, plus: enlarged.plus }, card: byId.get(enlarged.id)!, take: enlargedTake },
+            ]);
+            setEnlarged(null);
+          }}
+          onUpgrade={() => {
+            setEnlarged(null);
+            onUpgrade({ id: enlarged.id, plus: enlarged.plus });
+          }}
+        />
       )}
     </section>
   );
