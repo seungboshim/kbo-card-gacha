@@ -7,10 +7,23 @@ import { Coin } from "./coin";
 import { cardValue } from "./economy";
 import { SellModal } from "./sell-modal";
 import { SlotCard } from "./slot-card";
-import type { Slot, SlotRef } from "./vault";
+import { sortSlots, type Slot, type SlotRef, type SortBy } from "./vault";
 
 const FOCUS_RING = "outline-none focus-visible:ring-2 focus-visible:ring-white/70";
+// CLAUDE.md 근거: ring(box-shadow)은 인라인 boxShadow 요소에서 안 보인다 - 이 select 는
+// 그런 요소가 아니지만 outline 계열로 맞춘다. **outline-none 을 같이 쓰면 안 된다.**
+// Tailwind v4 의 outline-2 는 `outline-style: var(--tw-outline-style)`로 컴파일되는데
+// outline-none 이 그 변수를 none 으로 고정해버려, focus-visible 에도 폭·색만 먹고
+// 스타일이 none 으로 남아 안 보인다(app/page.tsx 의 원조 패턴도 outline-none 이 없다).
+const SELECT_FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70";
 const keyOf = (ref: SlotRef) => `${ref.id}:${ref.plus}`;
+
+const SORT_OPTIONS: { value: SortBy; label: string }[] = [
+  { value: "acquired", label: "획득순" },
+  { value: "tier", label: "등급순" },
+  { value: "value", label: "가치순" },
+  { value: "plus", label: "강화순" },
+];
 
 type Mode = "idle" | "picking";
 /** 칸 키 → 고른 장수. 0 장은 항목을 안 둔다(없으면 0 인 것과 같다). */
@@ -40,6 +53,9 @@ export function VaultGrid({
 }) {
   const [mode, setMode] = useState<Mode>("idle");
   const [selection, setSelection] = useState<Selection>({});
+  // 로컬 상태로만 둔다 - 저장할 스키마를 또 올릴 일이 아니다. 기본값은 지금까지의
+  // 동작(획득순)을 그대로 지킨다.
+  const [sortBy, setSortBy] = useState<SortBy>("acquired");
   const [enlarged, setEnlarged] = useState<Slot | null>(null);
   const [enlargedTake, setEnlargedTake] = useState(1);
   // 하단 바에서 고른 것이든 확대 화면에서 정한 수량이든, 팔기를 누르면 여기로 모인다.
@@ -107,10 +123,13 @@ export function VaultGrid({
   const pickedItems = picked
     .map((p) => ({ ref: { id: p.slot.id, plus: p.slot.plus }, card: byId.get(p.slot.id), take: p.take }))
     .filter((it): it is { ref: SlotRef; card: Card; take: number } => it.card != null);
+  // 고르기 모드에서도 그리드는 이 순서를 그대로 쓴다 - 컨트롤만 숨기지 순서는 안 되돌린다.
+  // 선택은 배열 인덱스가 아니라 id:plus 키(keyOf)로 잡으므로 순서가 달라져도 안 풀린다.
+  const sorted = sortSlots(slots, sortBy, byId);
 
   return (
     <section className="flex flex-col gap-3 pb-24">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-bold tracking-wide text-zinc-500 uppercase">
           {mode === "picking" ? (
             picked.length > 0 ? (
@@ -125,13 +144,31 @@ export function VaultGrid({
           )}
         </h2>
         {slots.length > 0 && (
-          <button
-            type="button"
-            onClick={() => (mode === "picking" ? exitPicking() : setMode("picking"))}
-            className={`rounded-lg bg-white/8 px-3 py-1.5 text-xs font-bold text-zinc-200 transition-colors hover:bg-white/15 ${FOCUS_RING}`}
-          >
-            {mode === "picking" ? "취소" : "고르기"}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* 고르기 중엔 감춘다 - 손이 이미 어느 칸을 누르고 있는데 순서가 바뀌면 헷갈린다. */}
+            {mode !== "picking" && (
+              <select
+                aria-label="정렬 기준"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortBy)}
+                style={{ colorScheme: "dark" }}
+                className={`rounded-lg bg-white/8 px-2 py-1.5 text-xs font-bold text-zinc-200 ring-1 ring-white/10 ${SELECT_FOCUS}`}
+              >
+                {SORT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              type="button"
+              onClick={() => (mode === "picking" ? exitPicking() : setMode("picking"))}
+              className={`rounded-lg bg-white/8 px-3 py-1.5 text-xs font-bold text-zinc-200 transition-colors hover:bg-white/15 ${FOCUS_RING}`}
+            >
+              {mode === "picking" ? "취소" : "고르기"}
+            </button>
+          </div>
         )}
       </div>
 
@@ -141,7 +178,7 @@ export function VaultGrid({
           <p className="py-10 text-center text-sm text-zinc-600">아직 카드가 없어요. 팩을 사보세요.</p>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {slots.map((slot) => {
+            {sorted.map((slot) => {
               const card = byId.get(slot.id);
               // 복원 안 되는 id 는 조용히 건너뛴다(방출된 선수 등). solo.tsx 의 옛 그리드와 같은 규칙.
               if (!card) return null;
