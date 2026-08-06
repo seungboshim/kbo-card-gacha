@@ -110,8 +110,13 @@ const TEAM_KR: Record<string, string> = {
  * 선수 사진도 얼굴만 잘린 작은 정사각형이라(10KB 안팎) 레전드 카드의 큰 레이아웃에서 허전하다.
  * 네이버 쪽 상반신 사진(80KB 안팎)과 등번호를 대신 쓴다.
  *
- * 시즌 성적이 바뀌어 레전드가 달라지면 여기 없는 선수는 그냥 FotMob 기본 사진으로 나온다.
- * 등급과 무관하게 적용하므로 이 선수들이 에픽으로 내려가도 사진은 그대로 좋은 걸 쓴다.
+ * **최종 등급이 레전드인 카드에만 쓴다.** 여기 이름이 있어도 에픽으로 내려가면
+ * FotMob 얼굴 사진으로 되돌린다(computeEplPool 끝의 heroOnlyForLegend). 예전엔 등급과
+ * 무관하게 붙였는데, 상반신 사진은 레전드 카드의 큰 레이아웃에 맞춰 고른 것이라 작은
+ * 카드에서는 얼굴이 작게 박혀 옆의 다른 에픽들과 따로 놀았다.
+ *
+ * 등급이 정해지기 전에는 누가 레전드인지 모르므로, 여기서는 일단 붙여두고 등급 배정이
+ * 끝난 뒤에 걷어낸다.
  */
 const HERO: Record<string, { back?: string; photo: string }> = {
   "Gianluigi Donnarumma": { back: "#25", photo: "548577" },
@@ -353,10 +358,22 @@ export function computeEplPool(ratingList: StatRow[], stats: StatMaps, minMins =
       stats: statsOf(role, get, r),
     });
   }
-  return promoteGlobalLegends(
-    [...byRole.values()].flatMap((cards) => assignTiers(cards)),
-    minsById,
+  return heroOnlyForLegend(
+    promoteGlobalLegends([...byRole.values()].flatMap((cards) => assignTiers(cards)), minsById),
   );
+}
+
+/** HERO 사진의 FotMob 대체본. id 로만 만들어지므로 몇 번을 돌려도 결과가 같다. */
+const facePhoto = (id: string) => `https://images.fotmob.com/image_resources/playerimages/${id}.png`;
+
+/**
+ * 상반신 사진(HERO)은 레전드에만 남기고 나머지는 FotMob 얼굴 사진으로 되돌린다.
+ *
+ * 등급 배정이 다 끝난 뒤에 돌려야 한다. promoteGlobalLegends 가 역할군 1위를 에픽으로
+ * 내리기도 해서, 그 전에 판단하면 방금 내려간 선수가 상반신 사진을 그대로 들고 간다.
+ */
+function heroOnlyForLegend(cards: Card[]): Card[] {
+  return cards.map((c) => (c.tier === "LEGEND" ? c : { ...c, photo: facePhoto(c.id) }));
 }
 
 /**
