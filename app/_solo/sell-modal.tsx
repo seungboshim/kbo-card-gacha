@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef } from "react";
 import { useFocusTrap } from "./use-focus-trap";
 import { STYLE } from "../_game/card";
@@ -65,7 +66,17 @@ export function SellModal({
                 key={`${it.ref.id}-${it.ref.plus}`}
                 className="flex items-center gap-3 border-b border-white/5 px-5 py-2.5"
               >
-                <div aria-hidden="true" className={`h-8 w-8 shrink-0 rounded-lg ${STYLE[it.card.tier].edge}`} />
+                {/* 등급색 배경은 그대로 깔고 그 위에 사진을 올린다 - 사진 없는(빈 문자열) 선수는
+                    Image 를 안 그려서 등급색만 남는다. 어떤 선수인지는 옆 이름으로 이미 보이므로
+                    사진은 장식으로만 두고 alt 를 비운다. */}
+                <div
+                  aria-hidden="true"
+                  className={`h-10 w-10 shrink-0 overflow-hidden rounded-lg ${STYLE[it.card.tier].edge}`}
+                >
+                  {it.card.photo && (
+                    <Image src={it.card.photo} alt="" width={210} height={262} className="h-full w-full object-contain" />
+                  )}
+                </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 text-sm font-bold">
                     <span className="truncate">{it.card.name}</span>
@@ -75,7 +86,6 @@ export function SellModal({
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] text-zinc-500 tabular-nums">장당 {price.toLocaleString()}</div>
                 </div>
                 <span className="shrink-0 text-xs font-bold text-zinc-400 tabular-nums">{it.take}장</span>
                 <span className="w-16 shrink-0 text-right text-sm font-black tabular-nums">

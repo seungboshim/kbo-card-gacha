@@ -40,7 +40,8 @@ export function VaultGrid({
   const [mode, setMode] = useState<Mode>("idle");
   const [selection, setSelection] = useState<Selection>({});
   const [enlarged, setEnlarged] = useState<Slot | null>(null);
-  const [confirming, setConfirming] = useState(false);
+  // 판매 확인에 넘길 항목. null 이면 모달이 안 떠 있다.
+  const [pendingSell, setPendingSell] = useState<{ ref: SlotRef; card: Card; take: number }[] | null>(null);
 
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
@@ -68,11 +69,11 @@ export function VaultGrid({
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape" || upgradeOpen) return;
       if (enlarged) setEnlarged(null);
-      else if (mode === "picking" && !confirming) exitPicking();
+      else if (mode === "picking" && pendingSell === null) exitPicking();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [enlarged, mode, confirming, upgradeOpen]);
+  }, [enlarged, mode, pendingSell, upgradeOpen]);
 
   function enterPickingWith(ref: SlotRef) {
     setMode("picking");
@@ -112,6 +113,10 @@ export function VaultGrid({
   }, 0);
   // 강화는 한 칸에서 한 장만 골랐을 때만 연다. 두 칸 이상이거나 한 칸에서 두 장 이상이면 잠긴다.
   const canUpgrade = picked.length === 1 && picked[0].take === 1;
+  // 복원 안 되는 id 는 판매 확인에도 안 들어간다(방출된 선수 등). SlotCard 렌더와 같은 규칙.
+  const pickedItems = picked
+    .map((p) => ({ ref: { id: p.slot.id, plus: p.slot.plus }, card: byId.get(p.slot.id), take: p.take }))
+    .filter((it): it is { ref: SlotRef; card: Card; take: number } => it.card != null);
 
   return (
     <section className="flex flex-col gap-3 pb-24">
@@ -141,7 +146,7 @@ export function VaultGrid({
       </div>
 
       {/* 판매 확인 모달이 떠 있는 동안은 뒤 그리드가 상호작용도 포커스도 안 받는다. */}
-      <div inert={confirming ? true : undefined}>
+      <div inert={pendingSell !== null ? true : undefined}>
         {slots.length === 0 ? (
           <p className="py-10 text-center text-sm text-zinc-600">아직 카드가 없어요. 팩을 사보세요.</p>
         ) : (
@@ -172,46 +177,61 @@ export function VaultGrid({
 
       {mode === "picking" && (
         <div className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="flex w-full max-w-3xl flex-wrap items-center gap-3 rounded-2xl bg-zinc-900/95 px-4 py-3 ring-1 ring-white/10 backdrop-blur">
-            <span className="mr-auto text-sm text-zinc-400">
-              팔면 <Coin amount={sellTotal} className="font-black text-amber-300" />
-            </span>
+          <div className="flex w-full max-w-3xl flex-wrap items-center justify-end gap-3 rounded-2xl bg-zinc-900/95 px-4 py-3 ring-1 ring-white/10 backdrop-blur">
             <button
               type="button"
               disabled={picked.length === 0}
-              onClick={() => setConfirming(true)}
+              onClick={() => setPendingSell(pickedItems)}
               className={`rounded-xl bg-white/10 px-4 py-1.5 text-sm font-bold text-zinc-200 ring-1 ring-white/15 transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS_RING}`}
             >
-              팔기
+              {picked.length === 0 ? (
+                "팔기"
+              ) : (
+                <>
+                  팔기 <Coin amount={sellTotal} className="font-black text-amber-300" />
+                </>
+              )}
             </button>
-            <button
-              type="button"
-              disabled={!canUpgrade}
-              onClick={() => {
-                if (!canUpgrade) return;
-                // exitPicking 을 여기서 안 부른다. 지금 부르면 이 버튼이 같은 렌더에서
-                // 사라져 오버레이가 마운트 시점에 잡는 document.activeElement 가 이미
-                // body 로 밀려나 있다 - Escape 로 닫아도 포커스가 돌아올 자리가 없어진다.
-                // 오버레이는 화면을 다 덮으니 고르기 덕이 뒤에 그대로 있어도 문제없다.
-                onUpgrade({ id: picked[0].slot.id, plus: picked[0].slot.plus });
-              }}
-              className={`rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-1.5 text-sm font-bold text-zinc-950 transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:from-white/10 disabled:to-white/10 disabled:text-zinc-500 disabled:opacity-60 ${FOCUS_RING}`}
-            >
-              {canUpgrade ? "강화" : "강화 · 한 칸에서 한 장만"}
-            </button>
+            {/* 잠긴 이유는 title 이 아니라 직접 그린 툴팁으로 알린다 - disabled 버튼은
+                브라우저가 마우스 이벤트를 안 보내 title 도 안 떠서다. */}
+            <span className="group relative">
+              <button
+                type="button"
+                disabled={!canUpgrade}
+                onClick={() => {
+                  if (!canUpgrade) return;
+                  // exitPicking 을 여기서 안 부른다. 지금 부르면 이 버튼이 같은 렌더에서
+                  // 사라져 오버레이가 마운트 시점에 잡는 document.activeElement 가 이미
+                  // body 로 밀려나 있다 - Escape 로 닫아도 포커스가 돌아올 자리가 없어진다.
+                  // 오버레이는 화면을 다 덮으니 고르기 덕이 뒤에 그대로 있어도 문제없다.
+                  onUpgrade({ id: picked[0].slot.id, plus: picked[0].slot.plus });
+                }}
+                aria-describedby={canUpgrade ? undefined : "upgrade-lock-tip"}
+                className={`rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-1.5 text-sm font-bold text-zinc-950 transition-[filter] hover:brightness-110 disabled:pointer-events-none disabled:from-white/10 disabled:to-white/10 disabled:text-zinc-500 disabled:opacity-60 ${FOCUS_RING}`}
+              >
+                강화
+              </button>
+              {!canUpgrade && (
+                <div
+                  id="upgrade-lock-tip"
+                  role="tooltip"
+                  className="pointer-events-none absolute bottom-full left-1/2 mb-2 w-40 -translate-x-1/2 rounded-md bg-zinc-900 px-2 py-1 text-center text-[11px] text-zinc-200 opacity-0 ring-1 ring-white/15 transition-opacity group-hover:opacity-100"
+                >
+                  한 칸에서 한 장만 고를 수 있어요
+                </div>
+              )}
+            </span>
           </div>
         </div>
       )}
 
-      {confirming && (
+      {pendingSell && (
         <SellModal
-          items={picked
-            .map((p) => ({ ref: { id: p.slot.id, plus: p.slot.plus }, card: byId.get(p.slot.id), take: p.take }))
-            .filter((it): it is { ref: SlotRef; card: Card; take: number } => it.card != null)}
-          onCancel={() => setConfirming(false)}
+          items={pendingSell}
+          onCancel={() => setPendingSell(null)}
           onConfirm={() => {
-            onSell(picked.map((p) => ({ ref: { id: p.slot.id, plus: p.slot.plus }, take: p.take })));
-            setConfirming(false);
+            onSell(pendingSell.map((it) => ({ ref: it.ref, take: it.take })));
+            setPendingSell(null);
             exitPicking();
           }}
         />
