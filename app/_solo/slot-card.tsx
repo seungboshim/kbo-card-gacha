@@ -4,6 +4,7 @@ import { useRef } from "react";
 import type { MouseEventHandler, PointerEventHandler } from "react";
 import { PlayerCard } from "../_game/card";
 import type { Card, SportConfig } from "../_game/deck";
+import { Coin } from "./coin";
 import { cardValue } from "./economy";
 import type { Slot } from "./vault";
 
@@ -150,9 +151,7 @@ export function SlotCard({
         </div>
       ) : (
         <div className="flex min-h-[24px] items-center justify-between px-0.5">
-          <span className="text-[11px] font-bold tabular-nums text-zinc-400">
-            {cardValue(card.tier, slot.plus).toLocaleString()}
-          </span>
+          <Coin amount={cardValue(card.tier, slot.plus)} className="text-[11px] font-bold text-zinc-400" />
           {slot.count > 1 && (
             <span className="rounded bg-white/7 px-1.5 text-[10px] font-bold text-zinc-500 tabular-nums">
               {slot.count}장

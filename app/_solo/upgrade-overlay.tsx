@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFocusTrap } from "./use-focus-trap";
 import { PlayerCard, STYLE } from "../_game/card";
 import type { Card, SportConfig } from "../_game/deck";
+import { Coin } from "./coin";
 import { MAX_PLUS, cardValue, guardFee, oddsAt, upgradeCost } from "./economy";
 import type { UpgradeResult } from "./vault";
 
@@ -42,7 +43,7 @@ export function UpgradeOverlay({
   plus: number;
   credits: number;
   onClose: () => void;
-  /** 굴림 결과와 그때 낸 금액. 부모가 크레딧을 깎고 보관함·최고 기록을 갱신한다. */
+  /** 굴림 결과와 그때 낸 금액. 부모가 보유액을 깎고 보관함·최고 기록을 갱신한다. */
   onUpgrade: (result: UpgradeResult, pay: number) => void;
 }) {
   const [guard, setGuard] = useState(false);
@@ -124,9 +125,9 @@ export function UpgradeOverlay({
         onClick={(e) => e.stopPropagation()}
         className="relative flex w-full max-w-xs flex-col items-center gap-5 rounded-2xl bg-zinc-950 px-6 pt-12 pb-6 ring-1 ring-white/10"
       >
-        <span className="absolute top-4 left-5 text-xs font-black text-amber-300 tabular-nums">
-          <span className="mr-1.5 font-medium text-zinc-500">보유</span>
-          {credits.toLocaleString()}
+        <span className="absolute top-4 left-5 flex items-baseline gap-1.5 text-xs font-black text-amber-300">
+          <span className="font-medium text-zinc-500">보유</span>
+          <Coin amount={credits} />
         </span>
         <button
           ref={closeBtnRef}
@@ -160,12 +161,12 @@ export function UpgradeOverlay({
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2.5 text-center">
                 <div>
                   <div className={`text-2xl font-black tabular-nums ${s.label}`}>+{plus}</div>
-                  <div className="text-xs font-bold text-zinc-400 tabular-nums">{now.toLocaleString()}</div>
+                  <Coin amount={now} className="justify-center text-xs font-bold text-zinc-400" />
                 </div>
                 <span className="pb-4 text-base text-zinc-600">→</span>
                 <div>
                   <div className={`text-2xl font-black tabular-nums ${s.label}`}>+{plus + 1}</div>
-                  <div className="text-xs font-bold text-zinc-400 tabular-nums">{next.toLocaleString()}</div>
+                  <Coin amount={next} className="justify-center text-xs font-bold text-zinc-400" />
                 </div>
               </div>
 
@@ -226,12 +227,12 @@ export function UpgradeOverlay({
                     {guard ? "터져도 카드가 안 사라져요" : "켜면 파괴 확률이 0이 돼요"}
                   </span>
                 </span>
-                <span className={`text-sm font-black tabular-nums ${guard ? "text-green-400" : "text-zinc-600"}`}>
-                  +{fee.toLocaleString()}
+                <span className={`text-sm font-black ${guard ? "text-green-400" : "text-zinc-600"}`}>
+                  +<Coin amount={fee} />
                 </span>
               </button>
 
-              {/* 낼 금액은 버튼 안에 넣는다. "원"을 붙이지 않는다 — 크레딧은 게임 화폐라
+              {/* 낼 금액은 버튼 안에 넣는다. "원"을 붙이지 않는다 — 게임 화폐라
                   현금 결제로 읽히면 안 된다. 동전 그림이 단위를 대신한다. */}
               <button
                 type="button"
@@ -242,10 +243,10 @@ export function UpgradeOverlay({
                 {destroyed ? (
                   "카드가 사라졌어요"
                 ) : short ? (
-                  "크레딧이 모자라요"
+                  "돈이 모자라요"
                 ) : (
                   <>
-                    강화하기 <span className="rounded-md bg-black/20 px-2 py-0.5 tabular-nums">🪙 {pay.toLocaleString()}</span>
+                    강화하기 <Coin amount={pay} className="rounded-md bg-black/20 px-2 py-0.5" />
                   </>
                 )}
               </button>

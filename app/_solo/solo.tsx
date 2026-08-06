@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { drawPack, groupByTier, type Card, type SportConfig } from "../_game/deck";
 import { KBO } from "../_sports/kbo";
 import { EPL } from "../_sports/epl";
+import { Coin } from "./coin";
 import { cardValue, isBankrupt, type Pack } from "./economy";
 import { UpgradeOverlay } from "./upgrade-overlay";
 import { applyUpgrade, takeFrom, toSlots, type Owned, type SlotRef, type UpgradeResult } from "./vault";
@@ -115,7 +116,7 @@ export default function Solo({
    * 고른 칸을 판다.
    *
    * **실제로 빠진 장수만 값을 친다.** 요청한 take 로 계산하면, 모달이 열려 있는 사이에
-   * 보관함이 바뀌어 takeFrom 이 그만큼 못 빼도 크레딧은 다 들어와 돈이 생긴다.
+   * 보관함이 바뀌어 takeFrom 이 그만큼 못 빼도 판 값은 다 쳐줘서 돈이 생긴다.
    */
   function sell(picks: { ref: SlotRef; take: number }[]) {
     setRun((r) => {
@@ -169,7 +170,7 @@ export default function Solo({
     if (result === "success") setUpgrading({ id: ref.id, plus: ref.plus + 1 });
   }
 
-  // 자발적 종료. 파산과 달리 보관함·크레딧은 그대로 두고 over 만 켠다.
+  // 자발적 종료. 파산과 달리 보관함·보유액은 그대로 두고 over 만 켠다.
   function endNow() {
     setRun((r) => ({ ...r, over: true }));
     setEndConfirm(false);
@@ -202,9 +203,9 @@ export default function Solo({
               여기까지 하고 결과 보기
             </button>
           )}
-          <span className="text-base font-black text-amber-300 tabular-nums">
-            <span className="mr-1.5 text-xs font-medium text-zinc-500">보유</span>
-            {run.credits.toLocaleString()}
+          <span className="flex items-baseline gap-1.5 text-base font-black text-amber-300">
+            <span className="text-xs font-medium text-zinc-500">보유</span>
+            <Coin amount={run.credits} />
           </span>
         </div>
       </header>

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFocusTrap } from "./use-focus-trap";
 import { PlayerCard } from "../_game/card";
 import type { Card, SportConfig } from "../_game/deck";
+import { Coin } from "./coin";
 import { cardValue } from "./economy";
 import { SellModal } from "./sell-modal";
 import { SlotCard } from "./slot-card";
@@ -173,7 +174,7 @@ export function VaultGrid({
         <div className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="flex w-full max-w-3xl flex-wrap items-center gap-3 rounded-2xl bg-zinc-900/95 px-4 py-3 ring-1 ring-white/10 backdrop-blur">
             <span className="mr-auto text-sm text-zinc-400">
-              팔면 <b className="font-black text-amber-300 tabular-nums">{sellTotal.toLocaleString()}</b> 크레딧
+              팔면 <Coin amount={sellTotal} className="font-black text-amber-300" />
             </span>
             <button
               type="button"

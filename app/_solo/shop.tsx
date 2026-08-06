@@ -1,5 +1,6 @@
 "use client";
 
+import { Coin } from "./coin";
 import { PACKS, type Pack } from "./economy";
 
 export function Shop({ credits, onBuy }: { credits: number; onBuy: (pack: Pack) => void }) {
@@ -19,7 +20,7 @@ export function Shop({ credits, onBuy }: { credits: number; onBuy: (pack: Pack) 
             >
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-sm font-bold">{p.name}</span>
-                <span className="text-sm font-black text-amber-300 tabular-nums">{p.price.toLocaleString()}</span>
+                <Coin amount={p.price} className="text-sm font-black text-amber-300" />
               </div>
               <span className="text-xs text-zinc-400">{p.blurb}</span>
               <span className="text-[11px] text-zinc-600">{p.size}장</span>

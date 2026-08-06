@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useFocusTrap } from "./use-focus-trap";
 import { STYLE } from "../_game/card";
 import type { Card } from "../_game/deck";
+import { Coin } from "./coin";
 import { cardValue } from "./economy";
 import type { SlotRef } from "./vault";
 
@@ -86,9 +87,9 @@ export function SellModal({
         </div>
 
         <div className="flex items-center gap-3 px-5 py-4">
-          <span className="mr-auto text-xs text-zinc-400">
-            받을 크레딧
-            <b className="block text-xl font-black text-amber-300 tabular-nums">{total.toLocaleString()}</b>
+          <span className="mr-auto flex flex-col text-xs text-zinc-400">
+            받을 금액
+            <Coin amount={total} className="text-xl font-black text-amber-300" />
           </span>
           <button
             ref={cancelBtnRef}
