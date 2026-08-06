@@ -69,18 +69,36 @@ export function parseRun(raw: string | null): Run | null {
   return { v: r.v, season: r.season, credits: r.credits as number, vault: r.vault, best: r.best, over: r.over };
 }
 
-/** 브라우저에서만 동작한다. 서버 렌더 중에는 null 을 준다. */
+/**
+ * 세 껍데기 모두 try 로 감싼다. `typeof localStorage === "undefined"` 만으로는 안 된다.
+ *
+ * 사파리에서 "모든 쿠키 차단"을 켜두면 localStorage 객체는 멀쩡히 있는데 읽고 쓰는 순간
+ * SecurityError 를 던진다. 시크릿 모드나 저장 용량이 찼을 때는 setItem 이 QuotaExceededError
+ * 를 던진다. 안 막으면 그 예외가 렌더를 타고 올라가 화면 전체가 죽는다. 폰에서 아무것도
+ * 안 눌리는 증상이 이거였다.
+ *
+ * 저장을 못 하면 조용히 넘긴다. 새로고침하면 판이 날아가지만, 못 쓰는 화면보다는 낫다.
+ */
 export function loadRun(season: string): Run | null {
-  if (typeof localStorage === "undefined") return null;
-  return parseRun(localStorage.getItem(runKey(season)));
+  try {
+    return parseRun(localStorage.getItem(runKey(season)));
+  } catch {
+    return null;
+  }
 }
 
 export function saveRun(run: Run): void {
-  if (typeof localStorage === "undefined") return;
-  localStorage.setItem(runKey(run.season), serializeRun(run));
+  try {
+    localStorage.setItem(runKey(run.season), serializeRun(run));
+  } catch {
+    // 저장 불가. 이번 판은 메모리에서만 굴러간다.
+  }
 }
 
 export function clearRun(season: string): void {
-  if (typeof localStorage === "undefined") return;
-  localStorage.removeItem(runKey(season));
+  try {
+    localStorage.removeItem(runKey(season));
+  } catch {
+    // 지울 게 없거나 못 지운다. 어느 쪽이든 부르는 쪽이 새 판으로 넘어간다.
+  }
 }
