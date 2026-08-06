@@ -21,11 +21,19 @@ export function VaultGrid({
   byId,
   sport,
   onSell,
+  onUpgrade,
+  upgradeOpen,
 }: {
   slots: Slot[];
   byId: Map<string, Card>;
   sport: SportConfig;
   onSell: (picks: { ref: SlotRef; take: number }[]) => void;
+  /** 한 칸에서 한 장만 골랐을 때만 불린다. 부모가 강화 오버레이를 연다. */
+  onUpgrade: (ref: SlotRef) => void;
+  /** 강화 오버레이가 지금 열려 있는가. 열려 있는 동안은 고르기를 그대로 둔다(오버레이가
+   *  화면을 다 덮으므로 뒤에 있어도 문제없다) - 그래야 오버레이가 닫힐 때 이 강화 버튼으로
+   *  포커스가 돌아올 자리가 남는다. */
+  upgradeOpen: boolean;
 }) {
   const [mode, setMode] = useState<Mode>("idle");
   const [selection, setSelection] = useState<Selection>({});
@@ -48,17 +56,19 @@ export function VaultGrid({
     setSelection({});
   }
 
-  // Escape 는 위 레이어부터 하나씩 닫는다. 판매 확인 모달이 떠 있으면 그 모달이 자기 Escape 를
-  // 따로 처리하므로(SellModal) 여기서는 손대지 않는다.
+  // Escape 는 위 레이어부터 하나씩 닫는다. 판매 확인 모달·강화 오버레이가 떠 있으면
+  // 그쪽이 자기 Escape 를 따로 처리하므로(SellModal, UpgradeOverlay) 여기서는 손대지
+  // 않는다. 강화 오버레이를 안 걸러주면 같은 Escape 한 번에 이 효과도 같이 반응해
+  // 고르기 덕(강화 버튼)까지 사라져서, 오버레이가 닫힐 때 되돌아갈 포커스 자리가 없어진다.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || upgradeOpen) return;
       if (enlarged) setEnlarged(null);
       else if (mode === "picking" && !confirming) exitPicking();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [enlarged, mode, confirming]);
+  }, [enlarged, mode, confirming, upgradeOpen]);
 
   function enterPickingWith(ref: SlotRef) {
     setMode("picking");
@@ -173,8 +183,14 @@ export function VaultGrid({
             <button
               type="button"
               disabled={!canUpgrade}
-              // 강화 오버레이는 다음 작업(Task 5)에서 붙는다. 지금은 활성/비활성만 맞춘다.
-              onClick={() => {}}
+              onClick={() => {
+                if (!canUpgrade) return;
+                // exitPicking 을 여기서 안 부른다. 지금 부르면 이 버튼이 같은 렌더에서
+                // 사라져 오버레이가 마운트 시점에 잡는 document.activeElement 가 이미
+                // body 로 밀려나 있다 - Escape 로 닫아도 포커스가 돌아올 자리가 없어진다.
+                // 오버레이는 화면을 다 덮으니 고르기 덕이 뒤에 그대로 있어도 문제없다.
+                onUpgrade({ id: picked[0].slot.id, plus: picked[0].slot.plus });
+              }}
               className={`rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-4 py-1.5 text-sm font-bold text-zinc-950 transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:from-white/10 disabled:to-white/10 disabled:text-zinc-500 disabled:opacity-60 ${FOCUS_RING}`}
             >
               {canUpgrade ? "강화" : "강화 · 한 칸에서 한 장만"}
