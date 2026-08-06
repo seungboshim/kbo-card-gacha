@@ -47,6 +47,10 @@ export function UpgradeOverlay({
   const [guard, setGuard] = useState(false);
   const [oddsOpen, setOddsOpen] = useState(false);
   const [result, setResult] = useState<UpgradeResult | null>(null);
+  // 같은 result 가 두 번 연속 나와도(예: 실패 후 또 실패) 애니메이션이 다시 돌게 하는 키.
+  // className 문자열은 안 바뀌어도 key 가 바뀌면 React가 그 div를 다시 마운트해 CSS
+  // 애니메이션을 처음부터 재생한다 — game.tsx의 card-in이 card.id를 key로 쓰는 것과 같은 수법.
+  const [resultKey, setResultKey] = useState(0);
 
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
@@ -81,8 +85,13 @@ export function UpgradeOverlay({
   function handleUpgrade() {
     const outcome = roll(plus, guard);
     setResult(outcome);
+    setResultKey((k) => k + 1);
     onUpgrade(outcome, pay);
   }
+
+  // 결과별 연출 클래스. 값은 globals.css 맨 위 "강화 결과 연출 튜닝" 블록에 있다.
+  const resultAnim =
+    result === "success" ? "upgrade-success" : result === "keep" ? "upgrade-fail" : result === "destroy" ? "upgrade-destroy" : "";
 
   const resultText =
     result === "success"
@@ -119,9 +128,11 @@ export function UpgradeOverlay({
           ×
         </button>
 
-        <PlayerCard card={card} sport={sport} size="full" plus={plus} />
+        <div key={resultKey} className={resultAnim}>
+          <PlayerCard card={card} sport={sport} size="full" plus={plus} />
+        </div>
 
-        {/* 연출은 Task 7 로 미룬다. 지금은 글자와 aria-live 만 붙인다. */}
+        {/* 움직임이 꺼진 환경·스크린리더에서도 결과가 갈리도록 글자와 aria-live로도 알린다. */}
         <p role="status" aria-live="polite" className="min-h-[1em] text-center text-xs font-bold text-zinc-300">
           {resultText}
         </p>
