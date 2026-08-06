@@ -80,11 +80,20 @@ test("START_CREDITS 로는 플래티넘 팩을 못 산다", () => {
   assert.ok(START_CREDITS < platinum.price);
 });
 
-test("레전드 최고 강화가 폭주하지 않고 3만 언저리에서 멎는다", () => {
-  // 고정 배수 하나로는 이걸 못 만족시켰다(1.3 이면 15만, 1.6 이면 346만). 단계별
-  // 배수를 뒤로 갈수록 좁힌 이유가 이 상한이다.
+test("레전드 최고 강화가 5만 아래에서 멎는다", () => {
+  // 등급 간격 3.2배를 그대로 두고 총배수만 24.48배로 올리면 레전드 +15가 98,304까지
+  // 뛴다(docs/economy/2026-08-rebalance-24x.md Q2). "고강화 곡선이 너무 커지면
+  // 안 된다"는 요구를 지키려고 간격을 2.86배로 같이 좁혔다 — 48,958이 그 결과다.
   const max = cardValue("LEGEND", MAX_PLUS);
-  assert.ok(max > 25000 && max < 35000, `레전드 +${MAX_PLUS} 가치가 ${max}`);
+  assert.ok(max > 45000 && max < 50000, `레전드 +${MAX_PLUS} 가치가 ${max}`);
+});
+
+test("+15는 등급 세 칸을 넘는다", () => {
+  // 15번 강화한 카드가 등급 하나를 이겨야 "만렙"이 의미 있다. 누적배수 24.4788배는
+  // 기하평균 등급 간격(2.86배) 기준 3.05칸이라, 언커먼 +15가 갓 뽑은 레전드보다,
+  // 커먼 +15가 갓 뽑은 에픽보다 비싸진다.
+  assert.ok(cardValue("UNCOMMON", MAX_PLUS) > cardValue("LEGEND", 0));
+  assert.ok(cardValue("COMMON", MAX_PLUS) > cardValue("EPIC", 0));
 });
 
 test("강화 확률 셋의 합이 각 단계에서 100%", () => {
@@ -126,25 +135,65 @@ test("보호권 값이 어느 단계에서도 카드 가치를 넘지 않는다"
   }
 });
 
-test("파괴는 +7 부터 시작한다", () => {
-  // +0~+6 은 돈만 잃고 카드는 안 사라진다. 여기가 "감당할 수 있나"의 구간이고
-  // +7 부터가 "살아남을까"의 구간이다.
-  for (let n = 0; n < 7; n++) assert.equal(oddsAt(n, false).destroy, 0, `+${n} 에 파괴가 있다`);
-  for (let n = 7; n < MAX_PLUS; n++) assert.ok(oddsAt(n, false).destroy > 0, `+${n} 에 파괴가 없다`);
+test("파괴는 +6 부터 시작한다", () => {
+  // +0~+5 는 돈만 잃고 카드는 안 사라진다. 여기가 "감당할 수 있나"의 구간이고
+  // +6 부터가 "살아남을까"의 구간이다. 누적배수가 2배를 넘는 자리와 겹친다.
+  for (let n = 0; n < 6; n++) assert.equal(oddsAt(n, false).destroy, 0, `+${n} 에 파괴가 있다`);
+  for (let n = 6; n < MAX_PLUS; n++) assert.ok(oddsAt(n, false).destroy > 0, `+${n} 에 파괴가 없다`);
+  // 위 루프가 대신하는 구체적인 경계 두 지점도 그대로 짚어둔다.
+  assert.equal(oddsAt(5, false).destroy, 0);
+  assert.ok(oddsAt(6, false).destroy > 0);
 });
 
-test("강화 기대 손익의 부호가 +5→+6 에서 갈린다", () => {
-  // 강화장사(+0~+5 까지 올려 되파는 것)가 남게 됐다 — 예전(강화비 30%)엔 모든 단계가
-  // 손해라 강화할 이유가 없었다. 13% 로 낮추면서 경계를 +5→+6 에 정확히 맞췄다: 그
-  // 앞은 남고 뒤는 밑진다. 파괴가 시작되는 +7 과 겹치는 것도 의도다("여기부터 도박").
-  for (const tier of ["COMMON", "RARE", "LEGEND"] as const) {
+test("강화 기대손익은 다섯 등급 열다섯 단계 전부에서 음수다", () => {
+  // B안 전체의 핵심 성질이다. 이전 곡선(체감 배수 + 강화비 13%)은 +5→+6 까지 강화
+  // 장사가 남는 위험 없는 노동 루프였다. 지금은 초반 배수를 낮추고 강화비를
+  // ceil(가치 × 11%) 로 걸어 어느 단계도 기대값으로 이기지 못한다. 연속값이 아니라
+  // cardValue·upgradeCost 가 실제로 돌려주는 정수로 재야 반올림에서 뒤집히는 단계가
+  // 없는지도 같이 확인된다.
+  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
     for (let n = 0; n < MAX_PLUS; n++) {
       const o = oddsAt(n, false);
       const gain = (o.success / 100) * (cardValue(tier, n + 1) - cardValue(tier, n));
       const loss = (o.destroy / 100) * cardValue(tier, n) + upgradeCost(tier, n);
       const profit = gain - loss;
-      if (n <= 5) assert.ok(profit >= 0, `${tier} +${n}: 기대 손익 ${profit} (0 이상이어야 함)`);
-      else assert.ok(profit < 0, `${tier} +${n}: 기대 손익 ${profit} (음수여야 함)`);
+      assert.ok(profit < 0, `${tier} +${n}: 기대 손익 ${profit} (음수여야 함)`);
+    }
+  }
+});
+
+test("강화비 상한: +6 부터는 기본가 20% 를 넘지 않는다", () => {
+  // 강화비가 계속 가치에 비례하면 레전드 후반 강화비가 수천까지 올라 +15가
+  // 수학상으로만 존재하는 숫자가 된다. +6부터는 기본가 20% 상한이 걸려야 한다.
+  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
+    for (let n = 6; n < MAX_PLUS; n++) {
+      assert.ok(
+        upgradeCost(tier, n) <= BASE_VALUE[tier] * 0.2,
+        `${tier} +${n}: 강화비 ${upgradeCost(tier, n)} 가 상한 ${BASE_VALUE[tier] * 0.2} 을 넘는다`,
+      );
+    }
+  }
+});
+
+test("보호권은 파괴가 있는 모든 단계에서 항상 EV 손해다", () => {
+  // 보호료는 기대 파괴손실보다 5% 비싸게 매긴다(guardFee 의 ×1.05). 그래서 보호를
+  // 켠 기대손익은 안 켠 것보다 항상 더 나쁘다 — 그래야 "필수 토글"이 아니라
+  // "마음 편함을 사는 토글"로 남는다.
+  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
+    for (let n = 0; n < MAX_PLUS; n++) {
+      const off = oddsAt(n, false);
+      if (off.destroy === 0) continue;
+      const now = cardValue(tier, n);
+      const next = cardValue(tier, n + 1);
+      const cost = upgradeCost(tier, n);
+      const fee = guardFee(tier, n);
+      const gain = (off.success / 100) * (next - now);
+      const noGuardProfit = gain - (off.destroy / 100) * now - cost;
+      const guardProfit = gain - (cost + fee);
+      assert.ok(
+        guardProfit < noGuardProfit,
+        `${tier} +${n}: 보호 켬 ${guardProfit} 가 안 켬 ${noGuardProfit} 보다 안 나쁘다`,
+      );
     }
   }
 });
@@ -152,9 +201,7 @@ test("강화 기대 손익의 부호가 +5→+6 에서 갈린다", () => {
 test("강화비와 보호료는 카드가 비쌀수록 비싸다", () => {
   assert.ok(upgradeCost("LEGEND", 0) > upgradeCost("COMMON", 0));
   assert.ok(upgradeCost("EPIC", 5) > upgradeCost("EPIC", 0));
-  // 보호료는 파괴율이 0인 +0~+6 에서 공짜고, 파괴가 시작되는 +7 이후로 갈수록 오른다.
-  // (예전엔 +5 도 파괴가 있어 그 지점과 비교했지만, 지금은 +7 전까지 파괴가 0 이라
-  // 천장 근처와 비교해야 파괴율 상승이 보인다.)
+  // 보호료는 파괴율이 0인 +0~+5 에서 공짜고, 파괴가 시작되는 +6 부터 갈수록 오른다.
   assert.ok(guardFee("EPIC", 0) < guardFee("EPIC", MAX_PLUS - 1));
 });
 
