@@ -1,10 +1,103 @@
 @import "tailwindcss";
 
+/* ============================================================
+   강화 결과 연출 튜닝 — 세 결과의 지속시간이 전부 여기 있다. 조이려면 이 숫자만 고치면
+   된다(아래 keyframe 은 모양, 여긴 시간).
+
+   success(성공): 카드가 밝아지며 살짝 커진다. 등급색은 그대로 두고 밝기·채도와 크기로만
+     "레벨업"을 표현해서 등급이 무엇이든 새 규칙 없이 통한다.
+   fail(실패=유지): 짧게 흔들리고 살짝 어두워진다. 파괴의 사그라듦과 결이 다른 "튕겨나갔다"
+     느낌을 줘서, 움직임만 보고도 파괴와 헷갈리지 않게 한다.
+   destroy(파괴): 잠깐 번쩍했다가 색이 빠지고 작아지며 사라진다. 스파크 → 소멸 순서로
+     "터졌다"를 알리고, 끝난 뒤엔 안 보이는 상태로 고정한다(forwards) — 카드가 실제로
+     사라졌으니 애니메이션이 끝나도 다시 나타나면 안 된다.
+
+   모션이 꺼진 환경(prefers-reduced-motion)에서는 파일 맨 아래 미디어쿼리가 duration을
+   0.01ms로 눌러 셋 다 거의 즉시 끝난다 — 결과 문구(aria-live)가 이미 성공·실패·파괴를
+   말로 구분해주므로 움직임이 없어도 결과를 알 수 있다.
+   ============================================================ */
+:root {
+  --upg-success-duration: 0.45s;
+  --upg-fail-duration: 0.45s;
+  --upg-destroy-duration: 0.6s;
+  --upg-timing: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.upgrade-success {
+  animation: upgrade-success var(--upg-success-duration) var(--upg-timing) both;
+}
+.upgrade-fail {
+  animation: upgrade-fail-shake var(--upg-fail-duration) var(--upg-timing) both;
+}
+.upgrade-destroy {
+  animation: upgrade-destroy var(--upg-destroy-duration) ease-in forwards;
+}
+
+@keyframes upgrade-success {
+  0%,
+  100% {
+    filter: brightness(1) saturate(1);
+    transform: scale(1);
+  }
+  45% {
+    filter: brightness(1.6) saturate(1.35);
+    transform: scale(1.045);
+  }
+}
+
+@keyframes upgrade-fail-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+    filter: brightness(1);
+  }
+  15% {
+    transform: translateX(-7px);
+    filter: brightness(0.82);
+  }
+  35% {
+    transform: translateX(6px);
+  }
+  55% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(2px);
+    filter: brightness(1);
+  }
+}
+
+@keyframes upgrade-destroy {
+  0% {
+    opacity: 1;
+    filter: grayscale(0) brightness(1) saturate(1);
+    transform: scale(1) rotate(0deg) translateY(0);
+  }
+  20% {
+    filter: grayscale(0.1) brightness(1.7) saturate(1.5);
+    transform: scale(1.03) rotate(-1deg);
+  }
+  100% {
+    opacity: 0;
+    filter: grayscale(1) brightness(0.3);
+    transform: scale(0.8) rotate(4deg) translateY(14px);
+  }
+}
+
 body {
   background: #09090b;
   color: #ededed;
   font-family:
     var(--font-geist-sans), "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+}
+
+/* 길게 눌러 고르기에 들어갈 카드에 붙는다. iOS는 이미지 롱프레스에 저장 팝업을 띄우고
+   (touch-callout), 데스크톱은 길게 눌린 텍스트가 드래그로 잡힌다(user-select). 벤더 접두사가
+   붙은 속성이라 Tailwind 화살괄호 문법보다 이렇게 두는 게 더 안정적이다. */
+.pickable {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 @keyframes card-in {

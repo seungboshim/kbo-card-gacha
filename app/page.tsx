@@ -6,14 +6,13 @@ import { SPORT, SPORT_KEYS, hasLive } from "./_sports/seasons";
 // 그래서 같은 색조의 밝은 쪽을 쓴다.
 const LEAGUE_COLOR: Record<string, string> = { kbo: "#3B82F6", epl: "#A855F7" };
 
-// ready:false 인 모드는 잠긴 카드로 그린다. 혼자서 모드는 다음 단계에서 열린다.
-// 레이아웃을 지금 최종 모양으로 두면 그때 이 값만 뒤집으면 된다.
+// ready:false 인 모드는 잠긴 카드로 그린다.
 const MODES = [
   {
     key: "solo",
     title: "혼자서",
     desc: "주어진 돈으로 카드팩을 사고 카드깡을 한 뒤 선수를 강화해봐요",
-    ready: false,
+    ready: true,
   },
   {
     key: "multi",

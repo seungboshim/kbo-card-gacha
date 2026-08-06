@@ -78,10 +78,14 @@ export function PlayerCard({
   card,
   sport,
   size = "compact",
+  plus = 0,
 }: {
   card: Card;
   sport: SportConfig;
   size?: CardSize;
+  /** 강화 수치. 0 이면 아무것도 안 그린다. 팩에서 막 나온 카드가 압도적으로 많아서,
+   *  그 다수에 표시가 없어야 손을 탄 소수가 튄다. */
+  plus?: number;
 }) {
   const s = STYLE[card.tier];
   // 사진이 없는 선수도 있다(원본 404). 카드 높이는 유지하고 이름으로 대체한다.
@@ -177,7 +181,7 @@ export function PlayerCard({
             <div
               className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-zinc-950 via-zinc-950/90 to-transparent px-3 ${size === "mini" ? "pt-5 pb-1" : "pt-8 pb-1.5"}`}
             >
-              <div className="flex items-baseline gap-1.5">
+              <div className="flex items-center gap-1.5">
                 <span
                   className={`truncate ${isLegend ? "font-black" : "font-bold"} ${size === "full" ? "text-xl" : size === "mini" ? "text-sm" : "text-base"}`}
                 >
@@ -185,6 +189,14 @@ export function PlayerCard({
                 </span>
                 {size !== "mini" && card.back && (
                   <span className="shrink-0 text-[11px] text-zinc-400 tabular-nums">{card.back}</span>
+                )}
+                {plus > 0 && (
+                  <span
+                    className={`shrink-0 rounded-md px-1.5 text-[11px] leading-relaxed font-black tabular-nums ring-1 ring-inset ${s.label}`}
+                    style={{ background: "rgba(9,9,11,.75)" }}
+                  >
+                    +{plus}
+                  </span>
                 )}
               </div>
               {/* mini는 165px 안팎 폭이라 이름 아래는 대표 스탯만 남기고 팀/포지션/headline은 생략한다 */}
@@ -202,9 +214,17 @@ export function PlayerCard({
 
         {!hero && (
           <div className="border-t border-white/10 px-3 pt-2 pb-1">
-            <div className="flex items-baseline gap-1.5">
+            <div className="flex items-center gap-1.5">
               <span className={`truncate font-bold ${size === "full" ? "text-lg" : "text-sm"}`}>{card.name}</span>
               {card.back && <span className="shrink-0 text-[11px] text-zinc-500 tabular-nums">{card.back}</span>}
+              {plus > 0 && (
+                <span
+                  className={`shrink-0 rounded-md px-1.5 text-[11px] leading-relaxed font-black tabular-nums ring-1 ring-inset ${s.label}`}
+                  style={{ background: "rgba(9,9,11,.75)" }}
+                >
+                  +{plus}
+                </span>
+              )}
             </div>
             <div className="truncate text-[11px] text-zinc-400">
               {card.team} · {card.pos}

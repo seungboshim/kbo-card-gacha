@@ -30,9 +30,12 @@ node --test --test-name-pattern "레전드" deck.test.ts   # 테스트 하나만
   대결 규칙(`battle.ts`), 카드 UI(`card.tsx`), 게임 화면 전체(`game.tsx`)
 - `app/_sports/*` — 종목별 어댑터. 성적 API 호출, rating 계산, 표시 문구. 각각 `SportConfig`
   상수(`KBO`, `EPL`)와 `get{Kbo,Epl}Pool(): Promise<Card[]>` 를 내보낸다
-- `app/_solo/*` — 혼자서 모드의 규칙. 화면 없이 순수 함수만 둔다. `economy.ts` 는 숫자
-  (팩·판매가·강화 확률·비용·파산), `vault.ts` 는 보관함 모양(칸 묶기와 갱신),
-  `storage.ts` 는 런 저장. 상수를 한 곳에 모아둬 플레이하며 조이기 쉽다
+- `app/_solo/*` — 혼자서 모드. 규칙과 화면이 갈려 있다
+  - 규칙(순수 함수, 테스트가 덮는다): `economy.ts` 는 숫자(팩·판매가·강화 확률·비용·파산),
+    `vault.ts` 는 보관함 모양(칸 묶기와 갱신), `storage.ts` 는 런 저장
+  - 화면: `solo.tsx` 가 런 상태만 들고 지휘하고 `shop`·`opening`·`vault-grid`·`slot-card`·
+    `sell-modal`·`upgrade-overlay`·`result` 가 각자 한 화면씩 맡는다. `game.tsx` 처럼
+    한 파일에 몰지 않는다
 
 `_` 로 시작하는 폴더는 Next.js 라우팅에서 빠진다.
 
@@ -51,6 +54,8 @@ node --test --test-name-pattern "레전드" deck.test.ts   # 테스트 하나만
 /                          메인. 종목 × 모드
 /[sport]/multi             시즌 고르기
 /[sport]/multi/[season]    여럿이서 게임
+/[sport]/solo              시즌 고르기
+/[sport]/solo/[season]     혼자서 게임
 ```
 
 종목과 시즌은 동적 세그먼트다. 둘 다 `_sports/seasons.ts` 의 `SEASONS` 에서 파생되고
@@ -60,7 +65,6 @@ node --test --test-name-pattern "레전드" deck.test.ts   # 테스트 하나만
 옛 주소 `/kbo`, `/epl` 은 `next.config.ts` 의 `redirects()` 가 `/[sport]/multi` 로 넘긴다.
 307(임시)이라 나중에 `/kbo` 를 종목 홈으로 쓰고 싶어져도 브라우저 캐시에 안 박힌다.
 
-혼자서 모드(`/[sport]/solo`)는 아직 없다. 메인화면에서 잠긴 칸으로만 보인다.
 
 ### 서버 → 클라이언트 경계
 
@@ -122,6 +126,8 @@ node --test --test-name-pattern "레전드" deck.test.ts   # 테스트 하나만
   근거 없이 상수만 갈지 말 것
 - 의존성을 늘리지 않는다. Next + React 만 쓴다
 - 커밋 메시지는 한국어 현재형 평서문("~한다", "~로 바꾼다")
+- 강화 결과 연출을 손볼 때는 `globals.css` 맨 위 `--upg-*` 블록만 고치면 된다. 지속시간과
+  이징이 거기 모여 있다
 - **인라인 `boxShadow` 가 있는 element 에 `focus-visible:ring-*` 을 걸면 안 보인다.** Tailwind 의
   ring 은 box-shadow 로 구현되는데 인라인 스타일이 항상 이긴다. 이 저장소는 리그·등급 광원을
   인라인 그림자로 그리는 자리가 있으니(`app/page.tsx` 의 입구 카드), 그런 element 에는
