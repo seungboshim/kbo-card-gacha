@@ -8,6 +8,7 @@ import { cardValue, type Pack } from "./economy";
 import { UpgradeOverlay } from "./upgrade-overlay";
 import { applyUpgrade, takeFrom, toSlots, type SlotRef, type UpgradeResult } from "./vault";
 import { loadRun, newRun, saveRun, type Run } from "./storage";
+import { Opening } from "./opening";
 import { Shop } from "./shop";
 import { VaultGrid } from "./vault-grid";
 
@@ -29,6 +30,9 @@ export default function Solo({
   const [ready, setReady] = useState(false);
   // 강화 오버레이가 지금 다루는 칸. null 이면 안 열려 있다.
   const [upgrading, setUpgrading] = useState<SlotRef | null>(null);
+  // 개봉 연출이 지금 보여주는 팩. null 이면 안 열려 있다. 카드는 buy() 시점에 이미
+  // vault에 커밋해두므로, 이 state는 순수하게 화면용이라 잃어도 상관없다.
+  const [opening, setOpening] = useState<{ pack: Pack; cards: Card[] } | null>(null);
 
   // 마운트 직후 딱 한 번만 저장된 런으로 갈아끼운다. 커밋 이후(useEffect)에 해야
   // 하이드레이션 검사 시점과 안 겹친다. 렌더 중에 읽으면(지연 초기화든 렌더 중
@@ -53,11 +57,14 @@ export default function Solo({
   function buy(pack: Pack) {
     if (run.credits < pack.price) return;
     const picked = drawPack(groupByTier(pool), pack.size, Math.random, pack.rates);
+    // 카드를 먼저 vault에 커밋하고서야 개봉 연출을 띄운다. 그래야 연출 중에 뒤로 가거나
+    // 새로고침해도 결제한 카드가 그대로 남는다 — 연출은 이미 끝난 거래를 보여주는 것뿐이다.
     setRun((r) => ({
       ...r,
       credits: r.credits - pack.price,
       vault: [...r.vault, ...picked.map((c) => ({ id: c.id, plus: 0 }))],
     }));
+    setOpening({ pack, cards: picked });
   }
 
   // 골라진 칸마다 takeFrom 으로 실제 장수를 빼고, 뺀 만큼의 값을 합쳐 크레딧에 더한다.
@@ -110,26 +117,37 @@ export default function Solo({
         </span>
       </header>
 
-      <Shop credits={run.credits} onBuy={buy} />
-
-      <VaultGrid
-        slots={slots}
-        byId={byId}
-        sport={sport}
-        onSell={sell}
-        onUpgrade={setUpgrading}
-        upgradeOpen={upgrading !== null}
-      />
-
-      {upgrading && byId.get(upgrading.id) && (
-        <UpgradeOverlay
-          card={byId.get(upgrading.id)!}
+      {opening ? (
+        <Opening
           sport={sport}
-          plus={upgrading.plus}
-          credits={run.credits}
-          onClose={() => setUpgrading(null)}
-          onUpgrade={(result, pay) => upgrade(upgrading, result, pay)}
+          pack={opening.pack}
+          cards={opening.cards}
+          onDone={() => setOpening(null)}
         />
+      ) : (
+        <>
+          <Shop credits={run.credits} onBuy={buy} />
+
+          <VaultGrid
+            slots={slots}
+            byId={byId}
+            sport={sport}
+            onSell={sell}
+            onUpgrade={setUpgrading}
+            upgradeOpen={upgrading !== null}
+          />
+
+          {upgrading && byId.get(upgrading.id) && (
+            <UpgradeOverlay
+              card={byId.get(upgrading.id)!}
+              sport={sport}
+              plus={upgrading.plus}
+              credits={run.credits}
+              onClose={() => setUpgrading(null)}
+              onUpgrade={(result, pay) => upgrade(upgrading, result, pay)}
+            />
+          )}
+        </>
       )}
     </main>
   );
