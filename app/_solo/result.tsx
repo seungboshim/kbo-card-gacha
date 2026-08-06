@@ -40,13 +40,11 @@ export function Result({
   return (
     <div className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center gap-6 py-10 text-center">
       <div>
-        <h2 className="text-xl font-black tracking-tight">
-          {bankrupt ? "돈이 떨어졌어요" : "여기서 마무리했어요"}
-        </h2>
+        {/* 파산 조건(제일 싼 팩도 못 사고 보관함도 비었다)을 문구로 풀어 쓰지 않는다.
+            규칙 설명은 판정 직전에나 쓸모 있지, 끝난 뒤에는 김만 뺀다. */}
+        <h2 className="text-xl font-black tracking-tight">{bankrupt ? "파산했어요!" : "여기까지!"}</h2>
         <p className="mt-1 text-sm text-zinc-400">
-          {bankrupt
-            ? "제일 싼 팩도 못 사고 보관함도 비었어요. 이번 런은 여기까지예요."
-            : "이번 런에서 도달한 최고 기록들이에요."}
+          {bankrupt ? "팩 살 돈이 떨어졌어요." : "가장 높이 올린 카드들이에요."}
         </p>
       </div>
 
@@ -72,7 +70,7 @@ export function Result({
         </div>
       ) : (
         <p className="rounded-2xl bg-white/5 px-6 py-8 text-sm text-zinc-400 ring-1 ring-white/10">
-          강화에 성공한 적이 없어요. 다음 런에서 도전해봐요.
+          강화에 성공한 적이 없어요. 다음엔 꼭 올려봐요.
         </p>
       )}
 
