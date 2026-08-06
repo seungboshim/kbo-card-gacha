@@ -69,7 +69,11 @@ function CardDetail({
       onClick={onClose}
       className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[2px]"
     >
-      <div className="flex w-full max-w-xs flex-col items-center gap-2" onClick={(e) => e.stopPropagation()}>
+      {/* items-center 를 쓰면 안 된다. 카드가 제 내용 크기로 쪼그라들어 폭이 들쭉날쭉해지고,
+          카드 옆에 남는 빈 자리가 여전히 이 div 안이라 거기를 눌러도 stopPropagation 에
+          막혀 안 닫힌다. 폭을 max-w-xs 로 고정하고 카드가 그 폭을 다 쓰게 두면,
+          카드 바깥은 전부 백드롭이라 눌러서 닫을 수 있다. enlarged-card.tsx 와 같은 구조다. */}
+      <div className="flex w-full max-w-xs flex-col gap-2" onClick={(e) => e.stopPropagation()}>
         <button
           ref={closeBtnRef}
           type="button"
@@ -79,8 +83,11 @@ function CardDetail({
         >
           ×
         </button>
-        <PlayerCard card={entry.card} sport={sport} size="full" plus={entry.owned.plus} />
-        <Coin amount={worth(entry)} className="text-lg font-black text-amber-300" />
+        {/* 열리는 연출도 다른 확대 화면과 같게 맞춘다. */}
+        <div className="animate-[card-in_.5s_cubic-bezier(.2,.8,.2,1)_both]">
+          <PlayerCard card={entry.card} sport={sport} size="full" plus={entry.owned.plus} />
+        </div>
+        <Coin amount={worth(entry)} className="justify-center text-lg font-black text-amber-300" />
       </div>
     </div>
   );
