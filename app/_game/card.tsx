@@ -63,21 +63,27 @@ export const STYLE: Record<
 const LABEL = Object.fromEntries(TIERS.map((t) => [t.key, t.label])) as Record<TierKey, string>;
 
 /**
- * 강화 수치 칩의 색. 카드 등급이 아니라 강화 단계를 따라간다. 3칸씩 다섯 밴드다.
+ * 강화 수치 칩의 색. 카드 등급이 아니라 강화 단계를 따라간다.
  *
- * 밴드 경계를 파괴가 시작되는 +7 에 맞췄다(금색부터). 색이 바뀌는 순간이 위험이
- * 시작되는 순간이라 색 자체가 경고가 된다.
+ * +1~4 회색 · +5~7 은색 · +8~10 금색 · +11~13 청록 · +14~15 무지개.
+ * 금색이 시작되는 +8 근처가 파괴가 붙기 시작하는 구간이라, 색이 위험도를 같이 말한다.
  *
- * 금속 질감 그라디언트를 쓰는 이유: 등급 배지는 평면 색이라, 칩도 평면 색으로 두면
- * 에픽 노랑과 금색, 레전드 홀로와 무지개가 톤이 겹쳐 무엇이 등급이고 무엇이 강화인지
- * 안 갈린다.
+ * 배경을 안 칠하고 테두리와 글자에만 색을 준다. 금속 그라디언트로 꽉 채우면 이름 옆에서
+ * 너무 무겁고, 카드가 여러 장 깔린 도감에서 칩만 튄다.
  */
 const PLUS_BAND: { upTo: number; cls: string }[] = [
-  { upTo: 3, cls: "bg-gradient-to-b from-[#e0a878] to-[#a05a2c] text-[#3a1e0c]" },
-  { upTo: 6, cls: "bg-gradient-to-b from-[#f0f0f5] to-[#9a9aa8] text-[#2a2a33]" },
-  { upTo: 9, cls: "bg-gradient-to-b from-[#ffe680] to-[#d4a017] text-[#3d2c00]" },
-  { upTo: 12, cls: "bg-gradient-to-b from-[#a5f3fc] to-[#0e7490] text-[#062b33]" },
-  { upTo: 15, cls: "bg-[linear-gradient(115deg,#6ee7b7,#ffffff_30%,#d8b4fe_55%,#ffffff_75%,#7dd3fc)] text-[#1a1a2e]" },
+  { upTo: 4, cls: "text-zinc-300 ring-zinc-400/60" },
+  { upTo: 7, cls: "text-[#e8e8f0] ring-[#c8c8d8]/70" },
+  { upTo: 10, cls: "text-[#ffd76a] ring-[#e0a800]/70" },
+  { upTo: 13, cls: "text-[#a5f3fc] ring-[#22d3ee]/70" },
+  // 최상위 두 칸만 무지개. 테두리는 한 색으로 못 주므로 글자만 흐르게 두고 링은 밝은 흰색.
+  {
+    upTo: 15,
+    cls:
+      "ring-white/70 bg-clip-text text-transparent" +
+      " bg-[linear-gradient(115deg,#6ee7b7,#ffffff_30%,#d8b4fe_55%,#ffffff_75%,#7dd3fc)]" +
+      " bg-[length:200%_200%] animate-[holo-drift_9s_ease-in-out_infinite]",
+  },
 ];
 
 const plusBand = (plus: number) =>
@@ -212,7 +218,7 @@ export function PlayerCard({
                   <span className="shrink-0 text-[11px] text-zinc-400 tabular-nums">{card.back}</span>
                 )}
                 {plus > 0 && (
-                  <span className={`shrink-0 rounded-md px-1.5 text-[11px] leading-relaxed font-black tabular-nums ${plusBand(plus)}`}>
+                  <span className={`shrink-0 rounded px-1 text-[10px] leading-normal font-black tabular-nums ring-1 ring-inset ${plusBand(plus)}`}>
                     +{plus}
                   </span>
                 )}
@@ -236,7 +242,7 @@ export function PlayerCard({
               <span className={`truncate font-bold ${size === "full" ? "text-lg" : "text-sm"}`}>{card.name}</span>
               {card.back && <span className="shrink-0 text-[11px] text-zinc-500 tabular-nums">{card.back}</span>}
               {plus > 0 && (
-                <span className={`shrink-0 rounded-md px-1.5 text-[11px] leading-relaxed font-black tabular-nums ${plusBand(plus)}`}>
+                <span className={`shrink-0 rounded px-1 text-[10px] leading-normal font-black tabular-nums ring-1 ring-inset ${plusBand(plus)}`}>
                   +{plus}
                 </span>
               )}
