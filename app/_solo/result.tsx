@@ -104,16 +104,26 @@ function BestRow({
   return (
     <div className="flex flex-col items-center gap-2.5">
       <h3 className="text-xs font-bold text-zinc-500">{title}</h3>
-      <div className="flex justify-center gap-3">
+      {/* 폭을 고정하지 않고 3열 그리드로 남는 자리를 나눠 쓴다. 100px 로 박아뒀더니
+          mini 카드 안에서 강화 칩이 이름 자리를 먹어 "김도영 +13" 이 "긷 +13" 으로
+          잘렸다. mini 는 165px 안팎을 전제로 만든 크기라(CLAUDE.md) 좁히면 여기가
+          먼저 깨진다. 3열이면 390px 화면에서도 한 장에 116px 쯤 돌아가 세 글자
+          이름이 들어간다. */}
+      <div className="grid w-full grid-cols-3 gap-2">
         {items.map((entry) => (
           <button
             key={entry.owned.id}
             type="button"
             onClick={() => onSelect(entry)}
             aria-label={`${entry.card.name} 카드 상세`}
-            className={`flex w-[100px] flex-col items-center gap-1 rounded-2xl ${CARD_FOCUS}`}
+            className={`flex flex-col items-center gap-1 rounded-2xl ${CARD_FOCUS}`}
           >
-            <PlayerCard card={entry.card} sport={sport} size="mini" plus={entry.owned.plus} />
+            {/* w-full 을 감싸는 div 에 준다. 버튼이 items-center 라 카드가 제 내용
+                크기(65px)로 쪼그라들어 있었다 — 그래서 칸을 넓혀도 이름이 계속 잘렸다.
+                vault-grid.tsx 의 SlotCard 도 같은 이유로 버튼에 w-full 을 준다. */}
+            <div className="w-full">
+              <PlayerCard card={entry.card} sport={sport} size="mini" plus={entry.owned.plus} />
+            </div>
             <Coin amount={worth(entry)} className="text-[11px] font-bold text-zinc-400" />
           </button>
         ))}
