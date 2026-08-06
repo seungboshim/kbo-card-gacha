@@ -224,7 +224,7 @@ export default function Solo({
         />
       ) : (
         <>
-          <Shop credits={run.credits} onBuy={buy} />
+          <Shop credits={run.credits} sport={sport} onBuy={buy} />
 
           <VaultGrid
             slots={slots}

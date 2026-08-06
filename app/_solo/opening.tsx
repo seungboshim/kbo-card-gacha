@@ -94,18 +94,25 @@ export function Opening({
       {stage !== "revealing" ? (
         <div className="relative aspect-[10/19] w-28 sm:w-36">
           {stage === "reposition" ? (
-            <PackShell sport={sport} packSize={pack.size} animateClass="animate-[pack-in_.6s_ease-out_both]" />
+            <PackShell
+              sport={sport}
+              packSize={pack.size}
+              grade={pack.key as "normal" | "good" | "platinum"}
+              animateClass="animate-[pack-in_.6s_ease-out_both]"
+            />
           ) : (
             <>
               <PackShell
                 sport={sport}
                 packSize={pack.size}
+                grade={pack.key as "normal" | "good" | "platinum"}
                 clip="left"
                 animateClass="animate-[pack-tear-left_.9s_ease-in_both]"
               />
               <PackShell
                 sport={sport}
                 packSize={pack.size}
+                grade={pack.key as "normal" | "good" | "platinum"}
                 clip="right"
                 animateClass="animate-[pack-tear-right_.9s_ease-in_both]"
               />
