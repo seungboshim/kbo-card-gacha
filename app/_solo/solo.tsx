@@ -253,7 +253,7 @@ export default function Solo({
           ref={endDialogRef}
           role="dialog"
           aria-modal="true"
-          aria-label="런 종료 확인"
+          aria-label="판 종료 확인"
           onClick={() => setEndConfirm(false)}
           className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/55 p-4 backdrop-blur-[2px]"
         >
@@ -264,7 +264,7 @@ export default function Solo({
             <div>
               <h4 className="text-base font-bold">여기까지 하고 결과를 보시겠어요?</h4>
               <p className="mt-1 text-sm text-zinc-400">
-                되돌릴 수 없어요. 지금 런은 끝나고 최고 기록으로 결과가 남아요.
+                되돌릴 수 없어요. 지금 판은 끝나고 최고 기록으로 결과가 남아요.
               </p>
             </div>
             <div className="flex items-center justify-end gap-3">
