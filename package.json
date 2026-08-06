@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test deck.test.ts battle.test.ts snapshot.test.ts economy.test.ts"
+    "test": "node --test deck.test.ts battle.test.ts snapshot.test.ts economy.test.ts vault.test.ts"
   },
   "dependencies": {
     "next": "16.2.12",

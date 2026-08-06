@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev -- -p 3100   # 개발 서버. 로컬 확인은 3100 포트로 연다
 npm run build        # 프로덕션 빌드 (타입체크 겸함, 별도 tsc 스크립트 없음)
 npm run lint         # eslint (flat config, 인자 없이)
-npm test             # node --test deck.test.ts battle.test.ts snapshot.test.ts economy.test.ts
+npm test             # node --test deck.test.ts battle.test.ts snapshot.test.ts economy.test.ts vault.test.ts
 node scripts/snapshot.ts   # 카드 풀을 data/*.json 으로 다시 굽는다 (깃액션이 매일 자동 실행)
 
 node --test deck.test.ts                              # 파일 하나만
