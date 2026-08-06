@@ -69,8 +69,10 @@ export function Result({
           )}
         </div>
       ) : (
+        // 뽑은 카드는 강화 여부와 상관없이 best 에 들어간다(solo.tsx 의 buy()).
+        // 그래서 여기가 비는 경우는 딱 하나, 팩을 한 번도 안 산 것뿐이다.
         <p className="rounded-2xl bg-white/5 px-6 py-8 text-sm text-zinc-400 ring-1 ring-white/10">
-          강화에 성공한 적이 없어요. 다음엔 꼭 올려봐요.
+          팩을 한 번도 안 사봤어요. 다음엔 한 봉 사보세요.
         </p>
       )}
 

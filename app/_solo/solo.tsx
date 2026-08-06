@@ -27,6 +27,26 @@ function settleOver(next: Run): Run {
   return next.over || isBankrupt(next.credits, next.vault.length) ? { ...next, over: true } : next;
 }
 
+/**
+ * best 후보에 새 카드를 더한다. 같은 선수 id 는 가치 높은 쪽만 남기고, 가치
+ * 내림차순으로 다시 정렬해 BEST_KEEP 장만 남긴다.
+ *
+ * buy()에서 팩으로 갓 뽑은 +0 카드와 upgrade()에서 오른 카드가 같은 규칙을 타야
+ * 한다. 두 곳에 각자 정렬·필터를 짜면 한쪽만 고치는 사고가 나서 함수 하나로 뽑았다.
+ */
+function mergeBest(best: Owned[], additions: Owned[], byId: Map<string, Card>): Owned[] {
+  const worth = (o: Owned) => {
+    const c = byId.get(o.id);
+    return c ? cardValue(c.tier, o.plus) : 0;
+  };
+  const byPlayer = new Map<string, Owned>();
+  for (const o of [...best, ...additions]) {
+    const prev = byPlayer.get(o.id);
+    if (!prev || worth(o) > worth(prev)) byPlayer.set(o.id, o);
+  }
+  return [...byPlayer.values()].sort((a, b) => worth(b) - worth(a)).slice(0, BEST_KEEP);
+}
+
 export default function Solo({
   pool,
   sport: sportKey,
@@ -103,10 +123,15 @@ export default function Solo({
       // 진짜 판정은 업데이터 안에서 한다. 위 가드는 렌더 시점 값이라 같은 배치에서 두 번
       // 불리면 뚫린다.
       if (r.credits < pack.price) return r;
+      // 뽑은 카드도 best 후보에 넣는다. 강화를 한 번도 안 해도 결과 화면에 남아야
+      // 한다 — 안 넣으면 upgrade()만 best 를 갱신해, 플래티넘에서 레전드를 뽑고
+      // 강화 없이 끝낸 판은 도감이 빈 채로 남는다.
+      const added = picked.map((c) => ({ id: c.id, plus: 0 }));
       return settleOver({
         ...r,
         credits: r.credits - pack.price,
-        vault: [...r.vault, ...picked.map((c) => ({ id: c.id, plus: 0 }))],
+        vault: [...r.vault, ...added],
+        best: mergeBest(r.best, added, byId),
       });
     });
     setOpening({ pack, cards: picked });
@@ -150,19 +175,10 @@ export default function Solo({
       if (!owned || r.credits < pay) return r;
 
       const vault = applyUpgrade(r.vault, ref, result);
-      // 같은 카드가 여러 번 오르면 마지막 단계만 남긴다. 같은 선수의 +3 과 +5 가 둘 다
-      // 도감에 뜨면 자리만 차지한다.
-      const entry = { id: ref.id, plus: ref.plus + 1 };
-      const worth = (o: Owned) => {
-        const c = byId.get(o.id);
-        return c ? cardValue(c.tier, o.plus) : 0;
-      };
+      // 같은 카드가 여러 번 오르면 마지막 단계만 남긴다(mergeBest 가 가치로 골라준다).
+      // 같은 선수의 +3 과 +5 가 둘 다 도감에 뜨면 자리만 차지한다.
       const best =
-        result === "success"
-          ? [...r.best.filter((o) => o.id !== entry.id), entry]
-              .sort((a, b) => worth(b) - worth(a))
-              .slice(0, BEST_KEEP)
-          : r.best;
+        result === "success" ? mergeBest(r.best, [{ id: ref.id, plus: ref.plus + 1 }], byId) : r.best;
       return settleOver({ ...r, vault, credits: r.credits - pay, best });
     });
     // 성공하면 오버레이가 다음 단계를 보게 ref 를 올린다. 파괴는 그대로 둬 오버레이가
