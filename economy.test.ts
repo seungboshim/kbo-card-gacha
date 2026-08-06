@@ -25,13 +25,15 @@ test("팩 세 종의 확률표 합이 각각 100%", () => {
   }
 });
 
-test("팩 엣지가 의도한 범위에 있다", () => {
-  // 일반팩은 살짝 플레이어 유리(모으는 길), 플래티넘은 하우스가 가져간다.
+test("팩 엣지가 셋 다 플러스고, 비쌀수록 낮다", () => {
+  // 팩은 그대로 팔면 항상 손해다. 돈이 새는 곳을 팩 하나로 몰아야 강화가 만회 수단이
+  // 된다(반대로 두면 강화가 유일한 소각구가 되어 뭘 해도 줄어드는 느낌이 난다).
+  // 엣지가 비싼 팩일수록 낮은 건 의도다 — 비싼 팩을 사는 게 보상이어야 한다.
   const edge = (p: (typeof PACKS)[number]) => (p.price - packExpectedValue(p)) / p.price;
   const [normal, good, platinum] = PACKS;
-  assert.ok(edge(normal) < 0, `일반팩 엣지가 ${edge(normal)}`);
-  assert.ok(Math.abs(edge(good)) < 0.03, `고급팩 엣지가 ${edge(good)}`);
-  assert.ok(edge(platinum) > 0.02 && edge(platinum) < 0.08, `플래티넘 엣지가 ${edge(platinum)}`);
+  for (const p of PACKS) assert.ok(packExpectedValue(p) < p.price, `${p.name} 엣지가 마이너스`);
+  assert.ok(edge(normal) > edge(good), "일반팩 엣지가 고급팩보다 높지 않다");
+  assert.ok(edge(good) > edge(platinum), "고급팩 엣지가 플래티넘보다 높지 않다");
 });
 
 test("플래티넘 팩에는 커먼이 안 나온다", () => {
@@ -53,6 +55,36 @@ test("카드 가치는 등급과 강화 수치에 대해 단조 증가", () => {
     assert.ok(cardValue("EPIC", n) > cardValue("EPIC", n - 1));
   }
   assert.equal(cardValue("EPIC", 0), BASE_VALUE.EPIC);
+});
+
+test("MULT: cardValue 는 모든 등급에서 강화할수록 오른다", () => {
+  // 단계별로 배수가 다르니(STEP_GROWTH), 등급 하나만 보고 넘기면 특정 등급에서
+  // 역전이 나도 못 잡는다.
+  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
+    for (let n = 0; n < MAX_PLUS; n++) {
+      assert.ok(cardValue(tier, n) < cardValue(tier, n + 1), `${tier} +${n} → +${n + 1} 이 안 오름`);
+    }
+  }
+});
+
+test("천장 밖 강화 수치를 넣어도 NaN 이 안 나온다", () => {
+  // cardValue 가 배열에서 값을 읽으므로, 자르지 않으면 범위 밖에서 undefined 를
+  // 곱해 NaN 이 번진다.
+  assert.ok(Number.isFinite(cardValue("RARE", MAX_PLUS + 5)));
+  assert.ok(Number.isFinite(cardValue("RARE", -1)));
+});
+
+test("START_CREDITS 로는 플래티넘 팩을 못 산다", () => {
+  // 모아서 처음 사는 순간이 이 모드의 첫 목표다.
+  const platinum = PACKS.find((p) => p.key === "platinum")!;
+  assert.ok(START_CREDITS < platinum.price);
+});
+
+test("레전드 최고 강화가 폭주하지 않고 3만 언저리에서 멎는다", () => {
+  // 고정 배수 하나로는 이걸 못 만족시켰다(1.3 이면 15만, 1.6 이면 346만). 단계별
+  // 배수를 뒤로 갈수록 좁힌 이유가 이 상한이다.
+  const max = cardValue("LEGEND", MAX_PLUS);
+  assert.ok(max > 25000 && max < 35000, `레전드 +${MAX_PLUS} 가치가 ${max}`);
 });
 
 test("강화 확률 셋의 합이 각 단계에서 100%", () => {
@@ -101,15 +133,18 @@ test("파괴는 +7 부터 시작한다", () => {
   for (let n = 7; n < MAX_PLUS; n++) assert.ok(oddsAt(n, false).destroy > 0, `+${n} 에 파괴가 없다`);
 });
 
-test("강화는 어느 단계에서도 돈벌이가 아니다", () => {
-  // 성공 시 상승분보다 비용이 커야 도박이지 농사가 아니다.
-  // 예전 곡선은 낮은 단계에서 기대 손익이 플러스라 +3 까지 올려 파는 게 이득이었다.
+test("강화 기대 손익의 부호가 +5→+6 에서 갈린다", () => {
+  // 강화장사(+0~+5 까지 올려 되파는 것)가 남게 됐다 — 예전(강화비 30%)엔 모든 단계가
+  // 손해라 강화할 이유가 없었다. 13% 로 낮추면서 경계를 +5→+6 에 정확히 맞췄다: 그
+  // 앞은 남고 뒤는 밑진다. 파괴가 시작되는 +7 과 겹치는 것도 의도다("여기부터 도박").
   for (const tier of ["COMMON", "RARE", "LEGEND"] as const) {
     for (let n = 0; n < MAX_PLUS; n++) {
       const o = oddsAt(n, false);
       const gain = (o.success / 100) * (cardValue(tier, n + 1) - cardValue(tier, n));
       const loss = (o.destroy / 100) * cardValue(tier, n) + upgradeCost(tier, n);
-      assert.ok(gain <= loss, `${tier} +${n}: 기대 이득 ${gain} > 손실 ${loss}`);
+      const profit = gain - loss;
+      if (n <= 5) assert.ok(profit >= 0, `${tier} +${n}: 기대 손익 ${profit} (0 이상이어야 함)`);
+      else assert.ok(profit < 0, `${tier} +${n}: 기대 손익 ${profit} (음수여야 함)`);
     }
   }
 });
