@@ -3,6 +3,7 @@
 import type { SportConfig } from "./deck";
 
 // 카드팩 색. 종목 색을 따라간다(KBO 노랑 계열, PL 보라 계열). 무늬는 PackShell이 종목별로 가른다.
+// grade가 없거나 "normal"이면 이 표를 그대로 쓴다 — 여럿이서 모드가 등급 개념이 없으니 항상 이 갈래다.
 const PACK_THEME: Record<string, { base: string; band: string; sub: string; foot: string }> = {
   kbo: {
     base: "bg-[linear-gradient(165deg,#fde68a_0%,#fcd34d_42%,#f59e0b_100%)]",
@@ -16,6 +17,30 @@ const PACK_THEME: Record<string, { base: string; band: string; sub: string; foot
     sub: "text-violet-300",
     // KBO는 밝은 노랑 위라 어두운 글자가 맞지만, 여기는 아래로 갈수록 짙은 보라라 밝은 글자여야 읽힌다.
     foot: "text-violet-100/85",
+  },
+};
+
+/**
+ * 혼자서 모드 상점 팩 등급(good·platinum) 색. 종목과 무관하게 등급이 색을 정한다 —
+ * 종목 무늬(야구공/축구공)는 PackShell 본문에서 그대로 그리고, 여기서는 색만 간섭한다.
+ */
+const GRADE_THEME: Record<"good" | "platinum", { base: string; band: string; sub: string; foot: string }> = {
+  // 건메탈(회청색)에서 짙은 남색으로 떨어지는 그라디언트. 로열블루 밴드가 "밝은 포인트"다.
+  good: {
+    base: "bg-[linear-gradient(165deg,#6b7280_0%,#3f4655_38%,#161c2c_100%)]",
+    band: "bg-[#1e3a8a]",
+    sub: "text-cyan-300",
+    // 바탕 맨 아래가 그라디언트 중 제일 짙은 남색이라, 위 PACK_THEME.epl과 같은 기준으로 밝은 글자.
+    foot: "text-slate-200/85",
+  },
+  // card.tsx STYLE.LEGEND의 홀로그램 그라디언트·holo-drift를 그대로 재사용한다(어휘를 새로 안 만든다).
+  // 흰색이 반이라 전체적으로 밝으므로, 배지가 밴드처럼 짙은 색이어야 "제일 비싼 팩"으로 읽힌다.
+  platinum: {
+    base: "bg-[repeating-linear-gradient(115deg,#6ee7b7_0px,#ffffff_38px,#d8b4fe_76px,#ffffff_114px,#7dd3fc_152px,#ffffff_190px,#6ee7b7_228px)] bg-[length:200%_200%] animate-[holo-drift_9s_ease-in-out_infinite]",
+    band: "bg-[#0b0b0f]",
+    sub: "text-cyan-200",
+    // 파스텔·흰색만 순환해 어두운 색조가 없다 → 애니메이션 내내 어두운 글자로 둬도 항상 읽힌다.
+    foot: "text-zinc-950/80",
   },
 };
 
@@ -62,15 +87,22 @@ export function PackShell({
   dim,
   clip,
   animateClass,
+  grade,
+  note,
 }: {
   sport: SportConfig;
   packSize: number;
   dim?: boolean;
   clip?: "left" | "right";
   animateClass?: string;
+  /** 혼자서 모드 상점 팩 등급. 없으면(여럿이서 모드) 종목 색 그대로 쓴다 — 선택 인자라
+   *  game.tsx는 안 고쳐도 그대로 굴러간다. */
+  grade?: "normal" | "good" | "platinum";
+  /** 하단 표기 둘째 줄. 없으면 "등급 무작위". */
+  note?: string;
 }) {
   const clipPath = clip === "left" ? CLIP_LEFT : clip === "right" ? CLIP_RIGHT : CLIP_WHOLE;
-  const t = PACK_THEME[sport.key];
+  const t = grade === "good" || grade === "platinum" ? GRADE_THEME[grade] : PACK_THEME[sport.key];
   return (
     <div
       className={`absolute inset-0 overflow-hidden ${t.base} ${dim ? "brightness-[.45]" : ""} ${animateClass ?? ""}`}
@@ -116,7 +148,7 @@ export function PackShell({
       >
         선수 카드 {packSize}장
         <br />
-        등급 무작위
+        {note ?? "등급 무작위"}
       </div>
 
       {/* 비닐 광택 */}
