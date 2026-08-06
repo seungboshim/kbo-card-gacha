@@ -20,11 +20,18 @@ export const BASE_VALUE: Record<TierKey, number> = {
   LEGEND: 3000,
 };
 
-/** 강화 한 단계마다 가치가 곱해지는 배수. */
-export const GROWTH = 1.6;
+/**
+ * 강화 한 단계마다 가치가 곱해지는 배수.
+ *
+ * 1.6 이었다가 낮췄다. 천장을 15 로 늘리면서 1.6 을 쓰면 레전드가 346만이 되고,
+ * 강화비(가치의 30%)보다 성공 시 상승분(60%)이 커서 낮은 단계 강화가 돈벌이가 된다.
+ * 1.3 이면 상승분과 비용이 같아 모든 단계의 기대 손익이 음수가 된다. 강화로는
+ * 절대 돈을 못 번다.
+ */
+export const GROWTH = 1.3;
 
 /** 강화 천장. */
-export const MAX_PLUS = 10;
+export const MAX_PLUS = 15;
 
 export type Pack = {
   key: string;
@@ -78,7 +85,7 @@ export function packExpectedValue(pack: Pack): number {
   return perCard * pack.size;
 }
 
-/** 카드 가치 = 기본가 × 1.6^강화수치. 판매가이자 이 런의 성과 점수다. */
+/** 카드 가치 = 기본가 × GROWTH^강화수치. 판매가이자 이 런의 성과 점수다. */
 export function cardValue(tier: TierKey, plus: number): number {
   return Math.round(BASE_VALUE[tier] * GROWTH ** plus);
 }
@@ -86,21 +93,29 @@ export function cardValue(tier: TierKey, plus: number): number {
 /**
  * 강화 한 번 시도의 [성공, 파괴] 확률(%). 나머지가 실패(단계 유지)다.
  *
- * 피파 온라인 곡선을 참고했다. 초반은 후하게 주고 +6 에서 절벽을 만들고 그 뒤는 길게 끈다.
- * 선형으로 두면 실패율이 낮아 같은 단계를 계속 두드리게 되어 강화 클릭이 두 배가 됐다.
- * 절벽 곡선은 파괴가 일찍 정리해줘서 판이 빠르다.
+ * **파괴는 +7 부터 시작한다.** 그 아래는 돈만 잃고 카드는 안 사라진다. 긴장이
+ * "살아남을까"에서 "감당할 수 있나"로 옮겨가고, +7 이 진짜 도박의 시작선이 된다.
+ * 색 밴드가 바뀌는 자리와도 겹쳐서 색 자체가 경고가 된다.
+ *
+ * 파괴가 +0 부터 있던 예전 곡선은 +5→+6 이 성공 25% 파괴 25% 라, 돈이 있어도 두 번에
+ * 한 번은 카드를 잃어 강화의 재미가 초반에 끊겼다.
  */
 const ODDS: readonly (readonly [number, number])[] = [
-  [95, 1],
-  [85, 3],
-  [70, 7],
-  [55, 12],
-  [40, 18],
-  [25, 25],
-  [16, 30],
-  [10, 34],
-  [7, 37],
-  [5, 40],
+  [98, 0],
+  [95, 0],
+  [90, 0],
+  [84, 0],
+  [76, 0],
+  [66, 0],
+  [55, 0],
+  [45, 8],
+  [36, 14],
+  [28, 20],
+  [21, 26],
+  [15, 32],
+  [10, 38],
+  [6, 44],
+  [3, 50],
 ];
 
 export type Odds = { success: number; keep: number; destroy: number };

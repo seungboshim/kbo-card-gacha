@@ -94,11 +94,33 @@ test("보호권 값이 어느 단계에서도 카드 가치를 넘지 않는다"
   }
 });
 
+test("파괴는 +7 부터 시작한다", () => {
+  // +0~+6 은 돈만 잃고 카드는 안 사라진다. 여기가 "감당할 수 있나"의 구간이고
+  // +7 부터가 "살아남을까"의 구간이다.
+  for (let n = 0; n < 7; n++) assert.equal(oddsAt(n, false).destroy, 0, `+${n} 에 파괴가 있다`);
+  for (let n = 7; n < MAX_PLUS; n++) assert.ok(oddsAt(n, false).destroy > 0, `+${n} 에 파괴가 없다`);
+});
+
+test("강화는 어느 단계에서도 돈벌이가 아니다", () => {
+  // 성공 시 상승분보다 비용이 커야 도박이지 농사가 아니다.
+  // 예전 곡선은 낮은 단계에서 기대 손익이 플러스라 +3 까지 올려 파는 게 이득이었다.
+  for (const tier of ["COMMON", "RARE", "LEGEND"] as const) {
+    for (let n = 0; n < MAX_PLUS; n++) {
+      const o = oddsAt(n, false);
+      const gain = (o.success / 100) * (cardValue(tier, n + 1) - cardValue(tier, n));
+      const loss = (o.destroy / 100) * cardValue(tier, n) + upgradeCost(tier, n);
+      assert.ok(gain <= loss, `${tier} +${n}: 기대 이득 ${gain} > 손실 ${loss}`);
+    }
+  }
+});
+
 test("강화비와 보호료는 카드가 비쌀수록 비싸다", () => {
   assert.ok(upgradeCost("LEGEND", 0) > upgradeCost("COMMON", 0));
   assert.ok(upgradeCost("EPIC", 5) > upgradeCost("EPIC", 0));
-  // 보호료는 파괴율이 0에 가까운 첫 단계에서 거의 공짜다
-  assert.ok(guardFee("EPIC", 0) < guardFee("EPIC", 5));
+  // 보호료는 파괴율이 0인 +0~+6 에서 공짜고, 파괴가 시작되는 +7 이후로 갈수록 오른다.
+  // (예전엔 +5 도 파괴가 있어 그 지점과 비교했지만, 지금은 +7 전까지 파괴가 0 이라
+  // 천장 근처와 비교해야 파괴율 상승이 보인다.)
+  assert.ok(guardFee("EPIC", 0) < guardFee("EPIC", MAX_PLUS - 1));
 });
 
 test("파산 판정: 제일 싼 팩도 못 사고 보관함도 비었을 때만", () => {
