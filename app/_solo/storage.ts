@@ -7,7 +7,10 @@ import { MAX_PLUS, START_CREDITS } from "./economy.ts";
 import { type Owned } from "./vault.ts";
 
 /** 형태를 바꾸면 올린다. 안 맞는 저장값은 버리고 새로 시작한다. */
-const VERSION = 1;
+const VERSION = 2;
+
+/** 결과 화면에 늘어놓을 최고 기록 수. */
+export const BEST_KEEP = 5;
 
 export type Run = {
   v: number;
@@ -15,15 +18,15 @@ export type Run = {
   season: string;
   credits: number;
   vault: Owned[];
-  /** 이 런에서 도달한 최고 카드. 강화 중에 터져도 기록은 남는다. */
-  best: { id: string; plus: number } | null;
+  /** 이 런에서 도달한 상위 기록. 가치 내림차순. 강화 중에 터져도 남는다. */
+  best: Owned[];
   over: boolean;
 };
 
 export const runKey = (season: string) => `cardgacha:run:${season}`;
 
 export function newRun(season: string): Run {
-  return { v: VERSION, season, credits: START_CREDITS, vault: [], best: null, over: false };
+  return { v: VERSION, season, credits: START_CREDITS, vault: [], best: [], over: false };
 }
 
 export const serializeRun = (run: Run): string => JSON.stringify(run);
@@ -61,7 +64,7 @@ export function parseRun(raw: string | null): Run | null {
   if (typeof r.season !== "string") return null;
   if (!Number.isFinite(r.credits) || (r.credits as number) < 0) return null;
   if (!Array.isArray(r.vault) || !r.vault.every(isOwned)) return null;
-  if (r.best !== null && !isOwned(r.best)) return null;
+  if (!Array.isArray(r.best) || !r.best.every(isOwned)) return null;
   if (typeof r.over !== "boolean") return null;
   return { v: r.v, season: r.season, credits: r.credits as number, vault: r.vault, best: r.best, over: r.over };
 }

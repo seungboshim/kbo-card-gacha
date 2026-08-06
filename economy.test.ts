@@ -205,7 +205,7 @@ test("newRun: 시작 크레딧과 빈 보관함", () => {
   assert.equal(r.season, "kbo-2026");
   assert.equal(r.credits, START_CREDITS);
   assert.deepEqual(r.vault, []);
-  assert.equal(r.best, null);
+  assert.deepEqual(r.best, []);
   assert.equal(r.over, false);
 });
 
@@ -213,7 +213,7 @@ test("직렬화하고 되읽으면 같다", () => {
   const r = newRun("kbo-2026");
   r.credits = 1234;
   r.vault = [{ id: "타자-1", plus: 3 }];
-  r.best = { id: "타자-1", plus: 3 };
+  r.best = [{ id: "타자-1", plus: 3 }];
   assert.deepEqual(parseRun(serializeRun(r)), r);
 });
 
@@ -233,9 +233,14 @@ test("스키마 버전이 다르면 버린다", () => {
 });
 
 test("모양이 안 맞으면 버린다", () => {
-  assert.equal(parseRun(JSON.stringify({ v: 1 })), null);
-  assert.equal(parseRun(JSON.stringify({ v: 1, season: "kbo-2026", credits: "많음", vault: [], best: null, over: false })), null);
-  assert.equal(parseRun(JSON.stringify({ v: 1, season: "kbo-2026", credits: 10, vault: "없음", best: null, over: false })), null);
+  assert.equal(parseRun(JSON.stringify({ v: 2 })), null);
+  assert.equal(parseRun(JSON.stringify({ v: 2, season: "kbo-2026", credits: "많음", vault: [], best: [], over: false })), null);
+  assert.equal(parseRun(JSON.stringify({ v: 2, season: "kbo-2026", credits: 10, vault: "없음", best: [], over: false })), null);
+});
+
+test("best 가 배열이 아니면 버린다", () => {
+  const bad = JSON.stringify({ ...newRun("kbo-2026"), best: { id: "a", plus: 1 } });
+  assert.equal(parseRun(bad), null);
 });
 
 test("runKey 는 시즌마다 다르다", () => {
@@ -268,7 +273,7 @@ test("음수·소수 강화 수치는 버린다", () => {
 });
 
 test("최고 기록의 강화 수치도 같은 범위를 지켜야 한다", () => {
-  const bad = JSON.stringify({ ...newRun("kbo-2026"), best: { id: "a", plus: MAX_PLUS + 5 } });
+  const bad = JSON.stringify({ ...newRun("kbo-2026"), best: [{ id: "a", plus: MAX_PLUS + 5 }] });
   assert.equal(parseRun(bad), null);
 });
 

@@ -6,8 +6,8 @@ import { KBO } from "../_sports/kbo";
 import { EPL } from "../_sports/epl";
 import { cardValue, isBankrupt, type Pack } from "./economy";
 import { UpgradeOverlay } from "./upgrade-overlay";
-import { applyUpgrade, takeFrom, toSlots, type SlotRef, type UpgradeResult } from "./vault";
-import { clearRun, loadRun, newRun, saveRun, type Run } from "./storage";
+import { applyUpgrade, takeFrom, toSlots, type Owned, type SlotRef, type UpgradeResult } from "./vault";
+import { BEST_KEEP, clearRun, loadRun, newRun, saveRun, type Run } from "./storage";
 import { Opening } from "./opening";
 import { Result } from "./result";
 import { Shop } from "./shop";
@@ -133,8 +133,8 @@ export default function Solo({
   }
 
   // 강화 한 번의 결과를 반영한다. 성공하면 그 한 장만 칸에서 빠져나와 plus+1 새 칸이 되고,
-  // 최고 기록도 값(등급 × 강화 배수)으로 비교해 갈아끼운다. 파괴는 vault 만 줄고 best 는
-  // 그대로 남는다. "+7까지 갔었다"가 이 모드의 성취라 터져도 지우면 안 된다.
+  // 최고 기록 다섯 장도 값(등급 × 강화 배수) 내림차순으로 다시 갈아끼운다. 파괴는 vault 만
+  // 줄고 best 는 그대로 남는다. "+7까지 갔었다"가 이 모드의 성취라 터져도 지우면 안 된다.
   function upgrade(ref: SlotRef, result: UpgradeResult, pay: number) {
     const card = byId.get(ref.id);
     if (!card) return;
@@ -143,21 +143,25 @@ export default function Solo({
       //
       // applyUpgrade 는 없는 칸을 만나면 조용히 아무것도 안 한다. 그래서 여기서 안 막으면
       // 오버레이가 열려 있는 사이에 그 카드를 팔아버렸을 때, 강화 버튼을 누를 때마다
-      // vault 는 그대로인 채 크레딧만 빠지고 best 에는 있지도 않은 기록이 쌓인다.
+      // vault 는 그대로인 채 돈만 빠지고 best 에는 있지도 않은 기록이 쌓인다.
       // 하려던 것이 아니라 실제로 바꾼 것으로 정산해야 돈이 무에서 생기지 않는다.
       const owned = r.vault.some((c) => c.id === ref.id && c.plus === ref.plus);
       if (!owned || r.credits < pay) return r;
 
       const vault = applyUpgrade(r.vault, ref, result);
-      let best = r.best;
-      if (result === "success") {
-        const value = cardValue(card.tier, ref.plus + 1);
-        // 예전 기록의 선수가 풀에서 빠졌을 수 있다(방출·은퇴). 그때는 값을 0 으로 봐서
-        // 새 기록이 이긴다. 화면에 못 그리는 기록이 새 기록을 막으면 안 된다.
-        const prev = r.best && byId.get(r.best.id);
-        const bestValue = prev ? cardValue(prev.tier, r.best!.plus) : 0;
-        if (value > bestValue) best = { id: ref.id, plus: ref.plus + 1 };
-      }
+      // 같은 카드가 여러 번 오르면 마지막 단계만 남긴다. 같은 선수의 +3 과 +5 가 둘 다
+      // 도감에 뜨면 자리만 차지한다.
+      const entry = { id: ref.id, plus: ref.plus + 1 };
+      const worth = (o: Owned) => {
+        const c = byId.get(o.id);
+        return c ? cardValue(c.tier, o.plus) : 0;
+      };
+      const best =
+        result === "success"
+          ? [...r.best.filter((o) => o.id !== entry.id), entry]
+              .sort((a, b) => worth(b) - worth(a))
+              .slice(0, BEST_KEEP)
+          : r.best;
       return settleOver({ ...r, vault, credits: r.credits - pay, best });
     });
     // 성공하면 오버레이가 다음 단계를 보게 ref 를 올린다. 파괴는 그대로 둬 오버레이가
