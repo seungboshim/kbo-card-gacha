@@ -184,15 +184,25 @@ test("강화 기대손익은 세 구간 규칙을 다섯 등급 전부에서 지
   }
 });
 
-test("강화비 상한: +6 부터는 기본가 20% 를 넘지 않는다", () => {
-  // 강화비가 계속 가치에 비례하면 레전드 후반 강화비가 수천까지 올라 +15가
-  // 수학상으로만 존재하는 숫자가 된다. +6부터는 기본가 20% 상한이 걸려야 한다.
+test("강화비: 안전 구간(+0~+5)은 가치의 11% 그대로다", () => {
+  // 2026-08 재조율은 도박 구간 상한만 낮췄다(20%→12%). 안전 구간(가치×11%)은 하나도
+  // 안 바뀌었다는 걸 다섯 등급 전부에서 못박는다 — 여기서 값이 움직이면 "위험 0
+  // 구간은 늘 음수"라는 규칙이 반올림 오차로 뒤집힐 수 있는 자리다(economy.ts 의
+  // upgradeCost 주석 참고).
+  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
+    for (let n = 0; n <= 5; n++) {
+      assert.equal(upgradeCost(tier, n), Math.ceil(cardValue(tier, n) * 0.11), `${tier} +${n}`);
+    }
+  }
+});
+
+test("강화비: 도박·트로피 구간(+6~+14)은 기본가의 12% 로 고정된다", () => {
+  // 예전엔 기본가 20% 가 상한이라 가치가 20%를 넘어서는 순간부터만 걸렸다. 지금은
+  // 12% 가 +6부터 끝까지 그대로 강화비다(가치에 더는 비례하지 않는다) — "어차피
+  // 7카 8카는 가야 본전"이라던 피드백을 손익분기 +7로 당기려고 낮춘 값이다.
   for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
     for (let n = 6; n < MAX_PLUS; n++) {
-      assert.ok(
-        upgradeCost(tier, n) <= BASE_VALUE[tier] * 0.2,
-        `${tier} +${n}: 강화비 ${upgradeCost(tier, n)} 가 상한 ${BASE_VALUE[tier] * 0.2} 을 넘는다`,
-      );
+      assert.equal(upgradeCost(tier, n), Math.ceil(BASE_VALUE[tier] * 0.12), `${tier} +${n}`);
     }
   }
 });
@@ -249,6 +259,29 @@ test("강화장사가 성립한다: 레어를 +0에서 +10까지 밀면 기대�
   const expectedReturn = survive * cardValue(tier, 10);
   const netProfit = expectedReturn - BASE_VALUE[tier] - expectedCost;
   assert.ok(netProfit > 0, `레어 +0→+10 강화장사 순이익이 ${netProfit.toFixed(2)} (양수여야 함)`);
+});
+
+/** +0에서 target까지 밀고 살아남았을 때의 기대 순이익. 계산식은 위 테스트와 같다. */
+function pushNetProfit(tier: keyof typeof BASE_VALUE, target: number): number {
+  let survive = 1;
+  let expectedCost = 0;
+  for (let n = 0; n < target; n++) {
+    const o = oddsAt(n, false);
+    const expectedClicks = 1 / ((o.success + o.destroy) / 100);
+    expectedCost += survive * expectedClicks * upgradeCost(tier, n);
+    survive *= o.success / (o.success + o.destroy);
+  }
+  const expectedReturn = survive * cardValue(tier, target);
+  return expectedReturn - BASE_VALUE[tier] - expectedCost;
+}
+
+test("손익분기가 +8 이하다: 레어·에픽·레전드를 +8까지 밀면 기대값으로 순이익", () => {
+  // 재조율 전에는 세 등급 다 손익분기가 +9였다(+8 순이익이 음수). 도박 구간 강화비를
+  // 기본가 20%→12%로 낮춰 손익분기를 +7로 당겼으니, +8에서는 이미 양수여야 한다.
+  for (const tier of ["RARE", "EPIC", "LEGEND"] as const) {
+    const profit = pushNetProfit(tier, 8);
+    assert.ok(profit > 0, `${tier} +0→+8 순이익이 ${profit.toFixed(2)} (양수여야 함)`);
+  }
 });
 
 test("파산 판정: 제일 싼 팩도 못 사고 보관함도 비었을 때만", () => {
