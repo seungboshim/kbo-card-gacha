@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useFocusTrap } from "./use-focus-trap";
 import { STYLE } from "../_game/card";
 import type { Card } from "../_game/deck";
 import { cardValue } from "./economy";
@@ -20,6 +21,8 @@ export function SellModal({
   onCancel: () => void;
 }) {
   const cancelBtnRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, true);
 
   useEffect(() => {
     cancelBtnRef.current?.focus();
@@ -35,6 +38,7 @@ export function SellModal({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label="판매 확인"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useFocusTrap } from "./use-focus-trap";
 import { PlayerCard, STYLE } from "../_game/card";
 import type { Card, SportConfig } from "../_game/deck";
 import { MAX_PLUS, cardValue, guardFee, oddsAt, upgradeCost } from "./economy";
@@ -54,6 +55,8 @@ export function UpgradeOverlay({
 
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, true);
 
   // game.tsx 의 overlayCard 패턴과 같다: 열릴 때 닫기 버튼에 포커스를 두고, 닫히면 원래
   // 있던 자리로 돌려준다. Escape 도 여기서 받는다.
@@ -104,6 +107,7 @@ export function UpgradeOverlay({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={`${card.name} 강화`}

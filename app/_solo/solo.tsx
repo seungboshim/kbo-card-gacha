@@ -11,6 +11,7 @@ import { clearRun, loadRun, newRun, saveRun, type Run } from "./storage";
 import { Opening } from "./opening";
 import { Result } from "./result";
 import { Shop } from "./shop";
+import { useFocusTrap } from "./use-focus-trap";
 import { VaultGrid } from "./vault-grid";
 
 const SPORTS: Record<SportConfig["key"], SportConfig> = { kbo: KBO, epl: EPL };
@@ -47,6 +48,8 @@ export default function Solo({
   // "여기까지 하고 결과 보기" 확인 모달. 되돌릴 수 없어서 한 번 멈춰 세운다.
   const [endConfirm, setEndConfirm] = useState(false);
   const endCancelRef = useRef<HTMLButtonElement>(null);
+  const endDialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(endDialogRef, endConfirm);
 
   // 마운트 직후 딱 한 번만 저장된 런으로 갈아끼운다. 커밋 이후(useEffect)에 해야
   // 하이드레이션 검사 시점과 안 겹친다. 렌더 중에 읽으면(지연 초기화든 렌더 중
@@ -56,12 +59,21 @@ export default function Solo({
   // useSyncExternalStore 는 스냅샷이 매 렌더 같은 참조여야 하는데, JSON.parse 결과는
   // 매번 새 객체라 무한 렌더를 부른다. 한 번 읽고 마는 값에 캐시 장치까지 붙일 일은 아니다.
   useEffect(() => {
+    const loaded = loadRun(season) ?? newRun(season);
+
+    // 풀에 없는 선수는 보관함에서 걷어낸다. 라이브 시즌은 방출·은퇴로 선수가 사라질 수 있다.
+    // 남겨두면 화면에는 안 그려지는데 vault.length 는 채워서, 팔 수도 강화할 수도 없는
+    // 카드 한 장이 파산 판정을 영영 막아 런이 결과 화면에 못 간다.
+    const ids = new Set(pool.map((c) => c.id));
+    const vault = loaded.vault.filter((c) => ids.has(c.id));
+    const pruned = vault.length === loaded.vault.length ? loaded : { ...loaded, vault };
+
     // settleOver 를 여기도 거친다. 정상 플레이에서는 저장 전에 항상 이미 거쳤을 값이지만,
-    // 저장값을 손으로 만들거나 옛 스키마를 옮겨온 경우까지 대비하는 한 줄이다.
+    // 방금 걷어낸 뒤라면 그 자리에서 파산이 될 수 있다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRun(settleOver(loadRun(season) ?? newRun(season)));
+    setRun(settleOver(pruned));
     setReady(true);
-  }, [season]);
+  }, [season, pool]);
 
   useEffect(() => {
     if (ready) saveRun(run);
@@ -85,26 +97,36 @@ export default function Solo({
     if (run.credits < pack.price) return;
     const picked = drawPack(groupByTier(pool), pack.size, Math.random, pack.rates);
     // 카드를 먼저 vault에 커밋하고서야 개봉 연출을 띄운다. 그래야 연출 중에 뒤로 가거나
-    // 새로고침해도 결제한 카드가 그대로 남는다 — 연출은 이미 끝난 거래를 보여주는 것뿐이다.
-    setRun((r) =>
-      settleOver({
+    // 새로고침해도 결제한 카드가 그대로 남는다. 연출은 이미 끝난 거래를 보여주는 것뿐이다.
+    setRun((r) => {
+      // 진짜 판정은 업데이터 안에서 한다. 위 가드는 렌더 시점 값이라 같은 배치에서 두 번
+      // 불리면 뚫린다.
+      if (r.credits < pack.price) return r;
+      return settleOver({
         ...r,
         credits: r.credits - pack.price,
         vault: [...r.vault, ...picked.map((c) => ({ id: c.id, plus: 0 }))],
-      }),
-    );
+      });
+    });
     setOpening({ pack, cards: picked });
   }
 
-  // 골라진 칸마다 takeFrom 으로 실제 장수를 빼고, 뺀 만큼의 값을 합쳐 크레딧에 더한다.
+  /**
+   * 고른 칸을 판다.
+   *
+   * **실제로 빠진 장수만 값을 친다.** 요청한 take 로 계산하면, 모달이 열려 있는 사이에
+   * 보관함이 바뀌어 takeFrom 이 그만큼 못 빼도 크레딧은 다 들어와 돈이 생긴다.
+   */
   function sell(picks: { ref: SlotRef; take: number }[]) {
     setRun((r) => {
       let vault = r.vault;
       let total = 0;
       for (const p of picks) {
-        const card = byId.get(p.ref.id);
-        if (card) total += cardValue(card.tier, p.ref.plus) * p.take;
+        const before = vault.length;
         vault = takeFrom(vault, p.ref, p.take);
+        const taken = before - vault.length;
+        const card = byId.get(p.ref.id);
+        if (card) total += cardValue(card.tier, p.ref.plus) * taken;
       }
       return settleOver({ ...r, vault, credits: r.credits + total });
     });
@@ -115,8 +137,17 @@ export default function Solo({
   // 그대로 남는다. "+7까지 갔었다"가 이 모드의 성취라 터져도 지우면 안 된다.
   function upgrade(ref: SlotRef, result: UpgradeResult, pay: number) {
     const card = byId.get(ref.id);
-    if (!card || run.credits < pay) return;
+    if (!card) return;
     setRun((r) => {
+      // 이 칸이 정말 남아 있는지, 돈이 정말 있는지를 커밋된 상태로 확인한다.
+      //
+      // applyUpgrade 는 없는 칸을 만나면 조용히 아무것도 안 한다. 그래서 여기서 안 막으면
+      // 오버레이가 열려 있는 사이에 그 카드를 팔아버렸을 때, 강화 버튼을 누를 때마다
+      // vault 는 그대로인 채 크레딧만 빠지고 best 에는 있지도 않은 기록이 쌓인다.
+      // 하려던 것이 아니라 실제로 바꾼 것으로 정산해야 돈이 무에서 생기지 않는다.
+      const owned = r.vault.some((c) => c.id === ref.id && c.plus === ref.plus);
+      if (!owned || r.credits < pay) return r;
+
       const vault = applyUpgrade(r.vault, ref, result);
       let best = r.best;
       if (result === "success") {
@@ -150,9 +181,11 @@ export default function Solo({
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-8 px-4 py-6">
-      <header className="flex items-center justify-between gap-4">
-        <h1 className="text-lg font-black tracking-tight">
-          {sport.title} <span className="text-zinc-500">혼자서</span>
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        {/* 좁은 화면에서 "혼자 / 서"로 끊기지 않게 각 덩어리를 통째로 줄바꿈한다 */}
+        <h1 className="flex flex-wrap items-baseline gap-x-1.5 text-lg font-black tracking-tight">
+          <span className="whitespace-nowrap">{sport.title}</span>
+          <span className="whitespace-nowrap text-zinc-500">혼자서</span>
         </h1>
         <div className="flex items-center gap-3">
           {/* 파산 없이도 끝낼 수 있는 유일한 길. 없으면 수십 번 클릭이 남은 판에 갇힌다. */}
@@ -172,7 +205,10 @@ export default function Solo({
         </div>
       </header>
 
-      {run.over ? (
+      {/* 위에 뜬 게 없을 때만 결과로 넘어간다. 마지막 카드가 터지면서 파산하면 over 와
+          강화 결과가 같은 배치에 들어와, 그냥 두면 "파괴됐어요"를 한 번도 못 보여주고
+          화면이 결과로 튄다. 오버레이를 닫고 나서 결과를 보여준다. */}
+      {run.over && !upgrading ? (
         <Result run={run} byId={byId} sport={sport} onRestart={restart} />
       ) : opening ? (
         <Opening
@@ -209,6 +245,7 @@ export default function Solo({
 
       {endConfirm && (
         <div
+          ref={endDialogRef}
           role="dialog"
           aria-modal="true"
           aria-label="런 종료 확인"

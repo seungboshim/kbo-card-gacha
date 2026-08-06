@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useFocusTrap } from "./use-focus-trap";
 import { PlayerCard } from "../_game/card";
 import type { Card, SportConfig } from "../_game/deck";
 import { cardValue } from "./economy";
@@ -42,6 +43,8 @@ export function VaultGrid({
 
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
+  const enlargeRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(enlargeRef, enlarged !== null);
 
   // 확대 오버레이 포커스 관리. game.tsx 의 overlayCard 패턴과 같다.
   useEffect(() => {
@@ -215,6 +218,7 @@ export function VaultGrid({
 
       {enlarged && byId.get(enlarged.id) && (
         <div
+          ref={enlargeRef}
           role="dialog"
           aria-modal="true"
           aria-label={`${byId.get(enlarged.id)!.name} 카드 확대`}

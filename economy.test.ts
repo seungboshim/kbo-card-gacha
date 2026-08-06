@@ -219,3 +219,38 @@ test("모양이 안 맞으면 버린다", () => {
 test("runKey 는 시즌마다 다르다", () => {
   assert.notEqual(runKey("kbo-2026"), runKey("epl-2526"));
 });
+
+test("음수 크레딧은 버린다", () => {
+  const bad = JSON.stringify({ ...newRun("kbo-2026"), credits: -800 });
+  assert.equal(parseRun(bad), null);
+});
+
+test("숫자가 아닌 크레딧은 버린다", () => {
+  for (const credits of [Infinity, NaN, null]) {
+    const bad = JSON.stringify({ ...newRun("kbo-2026"), credits });
+    assert.equal(parseRun(bad), null, `credits=${credits}`);
+  }
+});
+
+test("천장을 넘는 강화 수치는 버린다", () => {
+  // plus 999 를 통과시키면 카드 값이 200자리 숫자로 그려진다.
+  const bad = JSON.stringify({ ...newRun("kbo-2026"), vault: [{ id: "a", plus: MAX_PLUS + 1 }] });
+  assert.equal(parseRun(bad), null);
+});
+
+test("음수·소수 강화 수치는 버린다", () => {
+  for (const plus of [-1, 1.5]) {
+    const bad = JSON.stringify({ ...newRun("kbo-2026"), vault: [{ id: "a", plus }] });
+    assert.equal(parseRun(bad), null, `plus=${plus}`);
+  }
+});
+
+test("최고 기록의 강화 수치도 같은 범위를 지켜야 한다", () => {
+  const bad = JSON.stringify({ ...newRun("kbo-2026"), best: { id: "a", plus: MAX_PLUS + 5 } });
+  assert.equal(parseRun(bad), null);
+});
+
+test("천장에 딱 맞는 강화 수치는 통과한다", () => {
+  const ok = JSON.stringify({ ...newRun("kbo-2026"), vault: [{ id: "a", plus: MAX_PLUS }] });
+  assert.equal(parseRun(ok)?.vault[0].plus, MAX_PLUS);
+});
