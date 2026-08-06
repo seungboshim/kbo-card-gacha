@@ -92,6 +92,12 @@ export function UpgradeOverlay({
     onUpgrade(outcome, pay);
   }
 
+  // 여기 result 는 굴린 값이지 solo.tsx 가 받아들인 값이 아니다. 보관함에 그 칸이 없으면
+  // solo.tsx 가 정산을 거절하는데 이 글자는 "성공했어요"를 띄운다. 실제 조작으로는 닿을 수
+  // 없다(다이얼로그가 Tab 을 가두고 뒤 화면은 백드롭이 막는다). 맞추려면 onUpgrade 가
+  // 받아들였는지를 돌려줘야 하는데, 닿지 않는 표시 하나 때문에 두 파일의 계약을 바꿀 일은
+  // 아니라고 봤다. 돈과 보관함은 이미 실제로 바뀐 것으로만 움직인다.
+
   // 결과별 연출 클래스. 값은 globals.css 맨 위 "강화 결과 연출 튜닝" 블록에 있다.
   const resultAnim =
     result === "success" ? "upgrade-success" : result === "keep" ? "upgrade-fail" : result === "destroy" ? "upgrade-destroy" : "";
