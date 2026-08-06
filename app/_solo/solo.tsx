@@ -76,7 +76,7 @@ export default function Solo({
 
   // 강화 한 번의 결과를 반영한다. 성공하면 그 한 장만 칸에서 빠져나와 plus+1 새 칸이 되고,
   // 최고 기록도 값(등급 × 강화 배수)으로 비교해 갈아끼운다. 파괴는 vault 만 줄고 best 는
-  // 그대로 남는다 — "+7까지 갔었다"가 이 모드의 성취라 터져도 지우면 안 된다.
+  // 그대로 남는다. "+7까지 갔었다"가 이 모드의 성취라 터져도 지우면 안 된다.
   function upgrade(ref: SlotRef, result: UpgradeResult, pay: number) {
     const card = byId.get(ref.id);
     if (!card || run.credits < pay) return;
@@ -85,7 +85,10 @@ export default function Solo({
       let best = r.best;
       if (result === "success") {
         const value = cardValue(card.tier, ref.plus + 1);
-        const bestValue = r.best ? cardValue(byId.get(r.best.id)!.tier, r.best.plus) : 0;
+        // 예전 기록의 선수가 풀에서 빠졌을 수 있다(방출·은퇴). 그때는 값을 0 으로 봐서
+        // 새 기록이 이긴다. 화면에 못 그리는 기록이 새 기록을 막으면 안 된다.
+        const prev = r.best && byId.get(r.best.id);
+        const bestValue = prev ? cardValue(prev.tier, r.best!.plus) : 0;
         if (value > bestValue) best = { id: ref.id, plus: ref.plus + 1 };
       }
       return { ...r, vault, credits: r.credits - pay, best };
