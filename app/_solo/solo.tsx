@@ -28,8 +28,17 @@ function settleOver(next: Run): Run {
 }
 
 /**
- * best 후보에 새 카드를 더한다. 같은 선수 id 는 가치 높은 쪽만 남기고, 가치
- * 내림차순으로 다시 정렬해 BEST_KEEP 장만 남긴다.
+ * best 후보에 새 카드를 더한다.
+ *
+ * 1. **같은 선수 id 는 가치 높은 쪽만 남긴다.** 같은 등급 안에서는 강화 수치가
+ *    높을수록 가치도 커지므로(economy.ts 의 cardValue, MULT 는 단조 증가), 가치로
+ *    골라도 결국 그 선수의 최고 강화 기록이 남는다 — 강화순 기준으로도 안전하다.
+ * 2. **가치순 상위 BEST_KEEP 장과 강화순 상위 BEST_KEEP 장의 합집합**을 남긴다
+ *    (최대 2*BEST_KEEP 장). 가치순으로만 다섯 장을 자르면 싸구려 등급을 잔뜩
+ *    강화한 기록이 밀려난다 — 커먼 +12(가치 425)는 레전드 +0(가치 2,000)보다
+ *    싸서 가치순 다섯 장 안에 못 들어오는데, 강화순으로는 1등일 수 있다.
+ *
+ * 강화순 정렬의 tiebreak 은 가치 내림차순이다.
  *
  * buy()에서 팩으로 갓 뽑은 +0 카드와 upgrade()에서 오른 카드가 같은 규칙을 타야
  * 한다. 두 곳에 각자 정렬·필터를 짜면 한쪽만 고치는 사고가 나서 함수 하나로 뽑았다.
@@ -44,7 +53,15 @@ function mergeBest(best: Owned[], additions: Owned[], byId: Map<string, Card>): 
     const prev = byPlayer.get(o.id);
     if (!prev || worth(o) > worth(prev)) byPlayer.set(o.id, o);
   }
-  return [...byPlayer.values()].sort((a, b) => worth(b) - worth(a)).slice(0, BEST_KEEP);
+  const candidates = [...byPlayer.values()];
+  const topByValue = [...candidates].sort((a, b) => worth(b) - worth(a)).slice(0, BEST_KEEP);
+  const topByPlus = [...candidates]
+    .sort((a, b) => b.plus - a.plus || worth(b) - worth(a))
+    .slice(0, BEST_KEEP);
+
+  const union = new Map<string, Owned>();
+  for (const o of [...topByValue, ...topByPlus]) union.set(o.id, o);
+  return [...union.values()].sort((a, b) => worth(b) - worth(a));
 }
 
 export default function Solo({
