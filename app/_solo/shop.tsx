@@ -3,7 +3,7 @@
 import type { SportConfig } from "../_game/deck";
 import { PackShell } from "../_game/pack";
 import { Coin } from "./coin";
-import { PACKS, type Pack } from "./economy";
+import { PACKS, legendChance, type Pack } from "./economy";
 
 // 키보드 포커스는 outline-*로 그린다. ring-*은 box-shadow라, 아래에서 팩에 광원을
 // 인라인 그림자로 얹으면(플래티넘 등) 밀려서 안 보인다. outline은 독립 속성이라 안 부딪힌다.
@@ -15,12 +15,15 @@ import { PACKS, type Pack } from "./economy";
 const FOCUS_RING = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80";
 
 /**
- * 팩 하단 둘째 줄 문구. 커먼 비율을 economy.ts의 실제 확률표에서 뽑아 쓴다 —
- * 숫자를 여기 따로 적으면 그쪽 확률이 바뀔 때 문구만 낡아서 안 맞게 된다.
+ * 팩 하단 둘째 줄 문구. 숫자는 economy.ts의 실제 확률표에서 뽑는다 —
+ * 여기 손으로 적으면 그쪽 확률이 바뀔 때 문구만 낡아서 거짓말이 된다.
+ *
+ * 일반팩만 기본 문구("등급 무작위")를 쓴다. 레전드 3%를 적어봤자 살 이유가 안 되고,
+ * 오히려 "여긴 기대할 게 없다"가 이 팩의 성격이다.
  */
 function noteFor(p: Pack): string | undefined {
-  if (p.key === "normal") return undefined; // 기본 문구("등급 무작위")를 그대로 쓴다
-  return p.rates.COMMON === 0 ? "커먼 없음" : `커먼 ${p.rates.COMMON}%`;
+  if (p.key === "normal") return undefined;
+  return `레전드 ${legendChance(p)}%`;
 }
 
 export function Shop({
@@ -69,7 +72,9 @@ export function Shop({
                   amount={p.price}
                   className={`text-xs font-black sm:text-sm ${afford ? "text-amber-300" : "text-zinc-500"}`}
                 />
-                <span className="text-[10px] leading-tight text-zinc-500 sm:text-[11px]">{p.blurb}</span>
+                <span className="text-[10px] leading-tight text-zinc-500 sm:text-[11px]">
+                  {p.blurb.replace("{legend}", `${legendChance(p)}%`)}
+                </span>
                 <span className="text-[10px] text-zinc-600">{p.size}장</span>
                 {!afford && <span className="text-[10px] font-bold text-rose-400">보유액 부족</span>}
               </div>

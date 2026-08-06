@@ -79,7 +79,10 @@ export type Pack = {
   price: number;
   size: number;
   rates: Rates;
-  /** 상점에 적을 한 줄. */
+  /**
+   * 상점에 적을 한 줄. `{legend}` 를 쓰면 그 자리에 legendChance() 값이 들어간다.
+   * 숫자를 문구에 손으로 박으면 확률표를 고칠 때 문구만 낡아서 거짓말이 된다.
+   */
   blurb: string;
 };
 
@@ -107,7 +110,7 @@ export const PACKS: readonly Pack[] = [
     price: 400,
     size: 3,
     rates: { LEGEND: 1, EPIC: 3, RARE: 16, UNCOMMON: 28, COMMON: 52 },
-    blurb: "부담 없이 한 봉. 레전드 3%",
+    blurb: "별거 없는 일반 선수팩입니다.",
   },
   {
     key: "good",
@@ -115,7 +118,7 @@ export const PACKS: readonly Pack[] = [
     price: 1200,
     size: 5,
     rates: { LEGEND: 3, EPIC: 6, RARE: 24, UNCOMMON: 47, COMMON: 20 },
-    blurb: "커먼 비율을 20%까지 낮췄어요. 레전드 14%",
+    blurb: "고급진… 선수팩입니다",
   },
   {
     key: "platinum",
@@ -123,11 +126,21 @@ export const PACKS: readonly Pack[] = [
     price: 4200,
     size: 8,
     rates: { LEGEND: 9, EPIC: 23, RARE: 39, UNCOMMON: 29, COMMON: 0 },
-    blurb: "커먼이 안 나와요. 레전드 선수 등장 53%!",
+    blurb: "레전드 등장 {legend}! 국장보다 돈벌기 쉽다!",
   },
 ];
 
 export const cheapestPackPrice = () => Math.min(...PACKS.map((p) => p.price));
+
+/**
+ * 한 봉에서 레전드가 **적어도 한 장** 나올 확률(%, 정수).
+ *
+ * 장당 확률(플래티넘 9%)을 그대로 적으면 실제 체감보다 훨씬 인색해 보인다. 여덟 장을
+ * 한 번에 뜯으니 사람이 궁금한 건 "이 봉에서 레전드를 볼까"지 장당 확률이 아니다.
+ */
+export function legendChance(pack: Pack): number {
+  return Math.round((1 - (1 - pack.rates.LEGEND / 100) ** pack.size) * 100);
+}
 
 /** 팩 하나를 열어 전부 팔았을 때 받을 금액의 기댓값. 엣지를 재는 데 쓴다. */
 export function packExpectedValue(pack: Pack): number {
