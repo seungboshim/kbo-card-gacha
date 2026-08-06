@@ -78,16 +78,22 @@ export function UpgradeOverlay({
   const s = STYLE[card.tier];
   const atMax = plus >= MAX_PLUS;
   const destroyed = result === "destroy";
-  const odds = oddsAt(plus, guard);
+  // +0~+6 처럼 파괴 확률이 0 인 구간에서는 보호권이 살 게 없다(공짜인데 아무 일도 안
+  // 한다). guard state 는 그대로 두고, 실제로 적용되는 값만 이 파생값 하나로 몬다 —
+  // 그러면 단계가 바뀌어 구간을 벗어나도 useEffect 로 리셋할 필요가 없다(react-hooks/
+  // set-state-in-effect 가 렌더 중 setState 를 에러로 잡는다).
+  const canGuard = oddsAt(plus, false).destroy > 0;
+  const guardOn = canGuard && guard;
+  const odds = oddsAt(plus, guardOn);
   const now = cardValue(card.tier, plus);
   const next = cardValue(card.tier, plus + 1);
   const cost = upgradeCost(card.tier, plus);
   const fee = guardFee(card.tier, plus);
-  const pay = guard ? cost + fee : cost;
+  const pay = guardOn ? cost + fee : cost;
   const short = credits < pay;
 
   function handleUpgrade() {
-    const outcome = roll(plus, guard);
+    const outcome = roll(plus, guardOn);
     setResult(outcome);
     setResultKey((k) => k + 1);
     onUpgrade(outcome, pay);
@@ -195,42 +201,44 @@ export function UpgradeOverlay({
                       <dd className="text-right text-xs font-black text-zinc-300 tabular-nums">{odds.keep}%</dd>
                       <dt className="text-[11.5px] text-zinc-400">파괴</dt>
                       <dd
-                        className={`text-right text-xs font-black tabular-nums ${guard ? "text-zinc-600 line-through" : "text-red-400"}`}
+                        className={`text-right text-xs font-black tabular-nums ${guardOn ? "text-zinc-600 line-through" : "text-red-400"}`}
                       >
-                        {guard ? "0%" : `${odds.destroy}%`}
+                        {guardOn ? "0%" : `${odds.destroy}%`}
                       </dd>
                     </dl>
                   </div>
                 )}
               </div>
 
-              <button
-                type="button"
-                role="switch"
-                aria-checked={guard}
-                onClick={() => setGuard((g) => !g)}
-                className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-left ring-1 ring-inset transition-colors ${
-                  guard ? "bg-green-400/10 ring-green-400/45" : "bg-white/[0.04] ring-white/10"
-                } ${FOCUS_RING}`}
-              >
-                <span
-                  aria-hidden="true"
-                  className={`relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors ${guard ? "bg-green-400" : "bg-white/15"}`}
+              {canGuard && (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={guardOn}
+                  onClick={() => setGuard((g) => !g)}
+                  className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-left ring-1 ring-inset transition-colors ${
+                    guardOn ? "bg-green-400/10 ring-green-400/45" : "bg-white/[0.04] ring-white/10"
+                  } ${FOCUS_RING}`}
                 >
                   <span
-                    className={`absolute top-[3px] h-4 w-4 rounded-full bg-white transition-[left] ${guard ? "left-[19px]" : "left-[3px]"}`}
-                  />
-                </span>
-                <span className="flex-1 text-xs font-bold">
-                  파괴 보호권
-                  <span className="block text-[11px] font-medium text-zinc-500">
-                    {guard ? "터져도 카드가 안 사라져요" : "켜면 파괴 확률이 0이 돼요"}
+                    aria-hidden="true"
+                    className={`relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors ${guardOn ? "bg-green-400" : "bg-white/15"}`}
+                  >
+                    <span
+                      className={`absolute top-[3px] h-4 w-4 rounded-full bg-white transition-[left] ${guardOn ? "left-[19px]" : "left-[3px]"}`}
+                    />
                   </span>
-                </span>
-                <span className={`text-sm font-black ${guard ? "text-green-400" : "text-zinc-600"}`}>
-                  +<Coin amount={fee} />
-                </span>
-              </button>
+                  <span className="flex-1 text-xs font-bold">
+                    파괴 보호권
+                    <span className="block text-[11px] font-medium text-zinc-500">
+                      {guardOn ? "터져도 카드가 안 사라져요" : "켜면 파괴 확률이 0이 돼요"}
+                    </span>
+                  </span>
+                  <span className={`text-sm font-black ${guardOn ? "text-green-400" : "text-zinc-600"}`}>
+                    +<Coin amount={fee} />
+                  </span>
+                </button>
+              )}
 
               {/* 낼 금액은 버튼 안에 넣는다. "원"을 붙이지 않는다 — 게임 화폐라
                   현금 결제로 읽히면 안 된다. 동전 그림이 단위를 대신한다. */}
