@@ -86,7 +86,9 @@ const PLUS_BAND: { upTo: number; cls: string }[] = [
   },
 ];
 
-const plusBand = (plus: number) =>
+// 스쿼드 화면(squad-field.tsx)의 +N 칩도 이 색을 그대로 쓴다 - 보관함 카드와 스쿼드에서
+// 같은 강화 수치가 다른 색으로 보이면 안 되니 표를 하나만 둔다.
+export const plusBand = (plus: number) =>
   (PLUS_BAND.find((b) => plus <= b.upTo) ?? PLUS_BAND[PLUS_BAND.length - 1]).cls;
 
 // 구단 색 없는 teamId는 중립 회색.

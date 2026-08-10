@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { STYLE } from "../_game/card";
+import { plusBand, STYLE } from "../_game/card";
 import type { Card } from "../_game/deck";
 import { cardValue } from "./economy";
 import { matchesExact, type Slot as FieldSlot, type Squad } from "./squad";
@@ -73,9 +73,12 @@ function SlotButton({
                 <span aria-hidden="true" className={`h-full w-full ${STYLE[filling.card.tier].edge}`} />
               )}
             </span>
-            {/* 강화 칩은 사진 우상단. 예전엔 우하단이라 아래 이름과 붙어 뭉쳤다. */}
+            {/* 강화 칩: 사진 우상단, 색·크기(text-[9px] px-1) 모두 card.tsx의 plusBand·+N 칩과
+                맞췄다 - 더 작았을 때(text-[8px]) 레전드 구간 무지개 글자가 카드보다도 안 보였다. */}
             {filling.owned.plus > 0 && (
-              <span className="absolute -top-1 -right-1.5 rounded bg-zinc-950/95 px-0.5 text-[8px] leading-tight font-black text-white ring-1 ring-white/40">
+              <span
+                className={`absolute -top-1 -right-1.5 rounded bg-zinc-950/95 px-1 text-[9px] leading-tight font-black ring-1 ${plusBand(filling.owned.plus)}`}
+              >
                 +{filling.owned.plus}
               </span>
             )}
