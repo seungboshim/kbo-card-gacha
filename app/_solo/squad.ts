@@ -152,30 +152,37 @@ const FOOTBALL_ROLE_GROUP: Record<string, SlotGroup> = {
   스트라이커: "FW",
 };
 
-/** 야구 타자 pos → 슬롯 대분류. 투수는 role(선발/불펜)로 따로 본다. */
-const BASEBALL_POS_GROUP: Record<string, SlotGroup> = {
-  포수: "C",
-  내야수: "IF",
-  외야수: "OF",
-};
+/**
+ * 카드 한 장이 슬롯 하나에 들어갈 수 있는지.
+ *
+ * 타자가 서는 자리 / 투수가 서는 자리. 야구는 이 둘로만 가른다(아래 canPlace 주석).
+ * 포수·내야수·외야수를 슬롯 대분류로 옮기던 표는 걷어냈다 - 이제 그 구분은 배치 제한이
+ * 아니라 보너스(matchesExact)에서만 쓰이고, 거기서는 slot.exact 와 card.pos 를 바로 댄다.
+ */
+const BAT_GROUPS = new Set<SlotGroup>(["C", "IF", "OF", "DH"]);
 
-/** 카드 한 장이 슬롯 하나에 들어갈 수 있는지. */
 export function canPlace(card: Card, slot: Slot): boolean {
   if (FOOTBALL_GROUPS.has(slot.group)) return FOOTBALL_ROLE_GROUP[card.role] === slot.group;
 
-  if (card.role === "타자") {
-    if (slot.group === "DH") return true; // 지명타자는 타자면 아무나
-    return BASEBALL_POS_GROUP[card.pos] === slot.group;
-  }
-  // 투수(선발/불펜)
-  if (slot.group === "CL") return card.role === "불펜"; // 마무리는 불펜이면 아무나
-  if (slot.group === "SP") return card.role === "선발";
-  if (slot.group === "RP") return card.role === "불펜";
-  return false;
+  /*
+   * 야구는 타자 자리엔 아무 타자나, 투수 자리엔 아무 투수나 넣을 수 있다.
+   *
+   * 처음엔 포수/내야수/외야수까지 맞춰야 들어가게 막았는데, 그러면 주 포지션 보너스가
+   * 아무 일도 안 한다. 외야수는 외야 자리에만 들어갈 수 있으니 들어가는 순간 무조건
+   * 보너스라서다(실제로 19칸 중 17칸에 보너스가 붙었고, 안 붙는 건 아무나 받는 지명타자와
+   * 마무리 둘뿐이었다).
+   *
+   * 네이버가 주는 포지션이 외야수·내야수·포수까지뿐이라 더 잘게 나눌 수도 없다(수비 기록
+   * 엔드포인트도 없다). 그래서 제한을 풀고 보너스가 구분하게 뒤집었다. 축구에서 풀백을
+   * 센터백 자리에 세울 수 있되 보너스를 못 받는 것과 같은 구조다. 카드가 몇 장 없는
+   * 초반에도 일단 자리를 채울 수 있다는 이점도 같이 온다.
+   */
+  const isPitcher = card.role === "선발" || card.role === "불펜";
+  return isPitcher ? !BAT_GROUPS.has(slot.group) : BAT_GROUPS.has(slot.group);
 }
 
 /** 슬롯이 기대하는 "정 포지션"과 카드가 정확히 맞는지. exact 가 없으면 항상 false. */
-function matchesExact(card: Card, slot: Slot): boolean {
+export function matchesExact(card: Card, slot: Slot): boolean {
   if (!slot.exact) return false;
   if (FOOTBALL_GROUPS.has(slot.group)) return card.role === slot.exact;
   if (card.role === "타자") return card.pos === slot.exact;

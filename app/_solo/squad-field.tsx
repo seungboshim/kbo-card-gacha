@@ -3,7 +3,8 @@
 import Image from "next/image";
 import { STYLE } from "../_game/card";
 import type { Card } from "../_game/deck";
-import type { Slot as FieldSlot, Squad } from "./squad";
+import { cardValue } from "./economy";
+import { matchesExact, type Slot as FieldSlot, type Squad } from "./squad";
 
 // 포커스는 outline-*로 그린다. 이 버튼들은 뒤에 등급 링(ring, box-shadow)을 이미 쓰고
 // 있어서 focus-visible:ring을 더 얹으면 서로 밀어낸다 - app/page.tsx 패턴을 따라
@@ -39,22 +40,38 @@ function SlotButton({
     >
       {filling ? (
         <>
-          <span
-            className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full ring-1 ring-inset sm:h-11 sm:w-11 ${STYLE[filling.card.tier].chip}`}
-          >
-            {filling.card.photo ? (
-              <Image src={filling.card.photo} alt="" fill sizes="44px" className="object-cover" />
-            ) : (
-              <span aria-hidden="true" className={`h-full w-full ${STYLE[filling.card.tier].edge}`} />
-            )}
+          {/* 사진 원. 테두리를 ring-1 에서 ring-2 로 키웠다. 얼굴이 44px 밖에 안 돼서
+              얇은 선으로는 등급 색이 안 보였다.
+              인라인 boxShadow 로 광원을 얹지 않는다 - ring 이 box-shadow 로 구현돼서
+              같은 엘리먼트에 인라인 그림자를 주면 테두리가 통째로 덮인다(CLAUDE.md). */}
+          <span className="relative">
+            <span
+              className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full ring-2 sm:h-11 sm:w-11 ${STYLE[filling.card.tier].chip}`}
+            >
+              {filling.card.photo ? (
+                <Image src={filling.card.photo} alt="" fill sizes="44px" className="object-cover" />
+              ) : (
+                <span aria-hidden="true" className={`h-full w-full ${STYLE[filling.card.tier].edge}`} />
+              )}
+            </span>
+            {/* 강화 칩은 사진 우상단. 예전엔 우하단이라 아래 이름과 붙어 뭉쳤다. */}
             {filling.owned.plus > 0 && (
-              <span className="absolute -right-0.5 -bottom-0.5 rounded bg-zinc-950/90 px-0.5 text-[8px] leading-tight font-black text-white ring-1 ring-white/40">
+              <span className="absolute -top-1 -right-1.5 rounded bg-zinc-950/95 px-0.5 text-[8px] leading-tight font-black text-white ring-1 ring-white/40">
                 +{filling.owned.plus}
               </span>
             )}
           </span>
           <span className="max-w-[54px] truncate text-[9px] font-bold text-white drop-shadow sm:max-w-[64px] sm:text-[10px]">
             {filling.card.name}
+          </span>
+          {/* 값과 주 포지션 표시. 자리마다 이게 보여야 "여기 누굴 넣지"가 판단이 된다. */}
+          <span className="flex items-center gap-0.5 text-[8px] leading-none font-bold tabular-nums sm:text-[9px]">
+            <span className="text-amber-300/90">{cardValue(filling.card.tier, filling.owned.plus).toLocaleString()}</span>
+            {matchesExact(filling.card, slotDef) && (
+              <span className="text-emerald-400" title={`${slotDef.label} 주 포지션`} aria-label="주 포지션">
+                ★
+              </span>
+            )}
           </span>
         </>
       ) : (
@@ -85,25 +102,82 @@ function PitchLines() {
 }
 
 /**
- * 야구장 장식. 다이아몬드(마름모) + 외야 호만 그린다(계획서 지시). squad.ts의 좌표를
- * 보면 타자 슬롯은 y 8~58, 투수 슬롯은 y 80~98로 22포인트 간격이 비어 있다 - 그
- * 사이(y 68%)에서 그림 영역과 투수 대기 영역을 가른다. 나머지는 CSS만으로 그린
- * 장식이라 좌표에 딱 맞출 필요는 없고, 인원이 몰리는 타순 구역(포수~외야) 위에
- * 걸치도록 눈대중으로 앉혔다.
+ * 야구장. CSS 상자 대신 SVG 로 그린다.
+ *
+ * `preserveAspectRatio="none"` 에 `viewBox="0 0 100 100"` 을 물리면 SVG 좌표가 슬롯의
+ * x·y 백분율과 **정확히 같은 공간**이 된다. 그래서 홈플레이트를 (50,53)에 찍으면 포수
+ * 슬롯(50,58)이 바로 그 뒤에 앉고, 파울라인을 1루·3루로 그으면 내야수 슬롯이 저절로
+ * 베이스 바깥에 선다. 상자를 눈대중으로 앉히던 예전 방식으로는 이걸 맞출 수가 없었다.
+ *
+ * 늘어나는 좌표계라 선 굵기가 세로로 눌리므로 획에는 `vector-effect="non-scaling-stroke"`
+ * 를 건다. 도형이 눌리는 건 오히려 맞다 - 슬롯과 같은 공간에 있어야 하니까.
+ *
+ * 좌표 근거(squad.ts 의 BASEBALL_SLOTS):
+ * 외야 8~12 · 내야 38~42 · 포수 58 · 투수진 80~98. 그래서 그라운드는 y 0~66 을 쓰고
+ * 그 아래를 투수진 구역으로 가른다.
  */
+const HOME: [number, number] = [50, 53];
+const BASES: [number, number][] = [
+  [66, 44], // 1루
+  [50, 35], // 2루
+  [34, 44], // 3루
+];
+// 파울라인을 홈에서 1·3루 방향으로 늘여 담장에 닿는 지점. 외야수 슬롯이 (20,12)·(80,12)
+// 라 여기를 좁게 잡으면 좌·우익수가 잔디 밖으로 걸쳐 나간다.
+const FOUL_L: [number, number] = [0, 22];
+const FOUL_R: [number, number] = [100, 22];
+
 function BallparkArt() {
+  const diamond = [HOME, BASES[0], BASES[1], BASES[2]].map((p) => p.join(",")).join(" ");
   return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-      {/* 외야 호: 큰 원의 위쪽 호만 걸쳐서 곡선으로 보이게 한다 */}
-      <div className="absolute top-[2%] left-1/2 h-[62%] w-[150%] -translate-x-1/2 rounded-full border border-white/15" />
-      {/* 내야 다이아몬드 */}
-      <div className="absolute top-[48%] left-1/2 h-[26%] w-[26%] -translate-x-1/2 -translate-y-1/2 rotate-45 border border-white/25 bg-white/5" />
-      {/* 투수진 대기 구역 - 야구장 그림 밖 아래쪽 */}
-      <div className="absolute inset-x-0 bottom-0 h-[32%] border-t border-dashed border-white/15 bg-black/20">
-        <span className="absolute top-1.5 left-2 text-[9px] font-bold tracking-wide text-white/35 uppercase">
-          투수진
-        </span>
-      </div>
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute inset-0 h-full w-full"
+    >
+      <g vectorEffect="non-scaling-stroke">
+        {/* 페어 지역: 홈에서 좌우 파울라인을 타고 올라가 담장 호로 닫는다. 파울 지역
+            (이 도형 바깥)은 컨테이너 배경색 그대로 남아 저절로 어두워진다. */}
+        {/* 담장은 호(arc) 대신 3차 베지어로 그린다. 호는 반지름 두 개로 높이를 맞추기가
+            까다로운데, 제어점을 y=-8 로 빼면 가운데가 y≈2 까지 올라와 중견수(50,8)가
+            확실히 안쪽에 선다. */}
+        <path
+          d={`M${HOME} L${FOUL_L} C 0,-8 100,-8 ${FOUL_R} Z`}
+          className="fill-emerald-800/70 stroke-white/25"
+          vectorEffect="non-scaling-stroke"
+        />
+        {/* 내야 흙. 다이아몬드보다 조금 크게 깔아야 베이스가 흙 위에 앉는다. */}
+        <path
+          d={`M${HOME} L70,42 A 22 15 0 0 0 30,42 Z`}
+          className="fill-amber-900/45"
+        />
+        <polygon points={diamond} className="fill-none stroke-white/45" vectorEffect="non-scaling-stroke" />
+        {/* 베이스 셋과 홈플레이트 */}
+        {BASES.map(([x, y]) => (
+          <rect key={`${x}-${y}`} x={x - 1.6} y={y - 1.6} width="3.2" height="3.2" className="fill-white/70" />
+        ))}
+        <polygon
+          points={`${HOME[0] - 2},${HOME[1] - 2} ${HOME[0] + 2},${HOME[1] - 2} ${HOME[0] + 2},${HOME[1]} ${HOME[0]},${HOME[1] + 2} ${HOME[0] - 2},${HOME[1]}`}
+          className="fill-white/85"
+        />
+        {/* 마운드. 다이아몬드 한가운데다. */}
+        <ellipse cx="50" cy="44" rx="4" ry="3" className="fill-amber-800/70" />
+      </g>
+    </svg>
+  );
+}
+
+/** 투수진 구역. 그라운드 그림 밖 아래쪽(y 66% 부터)에 줄지어 선다. */
+function BullpenBand() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-x-0 bottom-0 h-[34%] border-t border-dashed border-white/15 bg-black/30"
+    >
+      <span className="absolute top-1.5 left-2 text-[9px] font-bold tracking-wide text-white/35 uppercase">
+        투수진
+      </span>
     </div>
   );
 }
@@ -135,7 +209,14 @@ export function SquadField({
       <div
         className={`absolute inset-0 overflow-hidden rounded-2xl ${isFootball ? "bg-emerald-900" : "bg-emerald-950"}`}
       >
-        {isFootball ? <PitchLines /> : <BallparkArt />}
+        {isFootball ? (
+          <PitchLines />
+        ) : (
+          <>
+            <BallparkArt />
+            <BullpenBand />
+          </>
+        )}
       </div>
       {slots.map((s) => {
         const owned = squad[s.id];

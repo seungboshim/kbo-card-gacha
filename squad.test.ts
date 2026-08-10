@@ -12,6 +12,7 @@ import {
   pruneSquad,
   bumpPlus,
   carrySquad,
+  matchesExact,
   type Squad,
 } from "./app/_solo/squad.ts";
 import { cardValue } from "./app/_solo/economy.ts";
@@ -78,12 +79,25 @@ test("축구: 풀백이 센터백 슬롯에 들어가되 가치 배수는 안 �
   assert.equal(value, cardValue("RARE", 0), "세부가 다르면 배수가 붙으면 안 된다");
 });
 
-test("야구: 외야수가 외야 슬롯에 들어가고 내야 슬롯엔 안 들어간다", () => {
+test("야구: 타자는 어느 타순 자리에도 들어가되, 제 자리에서만 보너스를 받는다", () => {
+  // 제한을 포지션까지 걸면 보너스가 아무 일도 안 한다(외야수는 외야에만 들어가니
+  // 들어가는 순간 무조건 보너스다). 그래서 제한을 풀고 보너스가 구분하게 뒤집었다.
   const of = card("of", { role: "타자", pos: "외야수" });
   const ofSlot = BASEBALL_SLOTS.find((s) => s.group === "OF")!;
   const ifSlot = BASEBALL_SLOTS.find((s) => s.group === "IF")!;
   assert.equal(canPlace(of, ofSlot), true);
-  assert.equal(canPlace(of, ifSlot), false);
+  assert.equal(canPlace(of, ifSlot), true, "내야 자리에도 세울 수는 있다");
+  assert.equal(matchesExact(of, ofSlot), true, "제 자리라 보너스");
+  assert.equal(matchesExact(of, ifSlot), false, "남의 자리라 보너스 없음");
+});
+
+test("야구: 타자는 투수 자리에, 투수는 타순 자리에 못 들어간다", () => {
+  const of = card("of", { role: "타자", pos: "외야수" });
+  const sp = card("sp", { role: "선발" });
+  const spSlot = BASEBALL_SLOTS.find((s) => s.group === "SP")!;
+  const ofSlot = BASEBALL_SLOTS.find((s) => s.group === "OF")!;
+  assert.equal(canPlace(of, spSlot), false);
+  assert.equal(canPlace(sp, ofSlot), false);
 });
 
 test("야구: 지명타자 슬롯엔 타자면 아무나 들어가지만 투수는 못 들어간다", () => {
@@ -95,14 +109,17 @@ test("야구: 지명타자 슬롯엔 타자면 아무나 들어가지만 투수�
   assert.equal(canPlace(card("rp", { role: "불펜", pos: "투수" }), dh), false);
 });
 
-test("야구: 선발은 중계 슬롯에 못 들어가고, 불펜은 중계·마무리 둘 다 들어간다", () => {
+test("야구: 선발도 중계 자리에 설 수 있되 보너스는 제 자리에서만 받는다", () => {
+  const spSlot = BASEBALL_SLOTS.find((s) => s.group === "SP")!;
   const rpSlot = BASEBALL_SLOTS.find((s) => s.group === "RP")!;
   const clSlot = BASEBALL_SLOTS.find((s) => s.group === "CL")!;
   const sp = card("sp", { role: "선발" });
   const rp = card("rp", { role: "불펜" });
-  assert.equal(canPlace(sp, rpSlot), false);
-  assert.equal(canPlace(rp, rpSlot), true);
-  assert.equal(canPlace(rp, clSlot), true);
+  assert.equal(canPlace(sp, rpSlot), true, "급하면 선발을 중계로 쓸 수 있다");
+  assert.equal(matchesExact(sp, rpSlot), false, "다만 보너스는 없다");
+  assert.equal(matchesExact(sp, spSlot), true);
+  assert.equal(matchesExact(rp, rpSlot), true);
+  assert.equal(matchesExact(rp, clSlot), false, "마무리 자리는 아무 불펜이나 받으므로 보너스가 없다");
 });
 
 test("스쿼드 가치: 주 포지션이 슬롯과 정확히 맞으면 1.2배가 붙는다", () => {
