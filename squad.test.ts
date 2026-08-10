@@ -11,6 +11,7 @@ import {
   isDuplicate,
   pruneSquad,
   bumpPlus,
+  carrySquad,
   type Squad,
 } from "./app/_solo/squad.ts";
 import { cardValue } from "./app/_solo/economy.ts";
@@ -142,4 +143,34 @@ test("bumpPlus: 강화 성공으로 오른 카드로 슬롯이 갱신된다", ()
   const squad: Squad = { CB1: { id: "a", plus: 2 } };
   const next = bumpPlus(squad, { id: "a", plus: 2 });
   assert.deepEqual(next, { CB1: { id: "a", plus: 3 } });
+});
+
+test("포메이션을 바꾸면 새 포메이션에도 있는 자리만 남는다", () => {
+  const byId = new Map<string, Card>([
+    ["gk", card("gk", { role: "골키퍼" })],
+    ["fb", card("fb", { role: "풀백" })],
+    ["cb", card("cb", { role: "센터백" })],
+    ["mf", card("mf", { role: "미드필더" })],
+  ]);
+  const squad: Squad = {
+    GK: { id: "gk", plus: 0 },
+    LB: { id: "fb", plus: 0 },
+    CB1: { id: "cb", plus: 0 },
+    CDM: { id: "mf", plus: 0 }, // 4-4-2 에는 없는 자리
+  };
+  const next = carrySquad(squad, FORMATION_SLOTS["4-4-2"], byId);
+  assert.deepEqual(Object.keys(next).sort(), ["CB1", "GK", "LB"], "4백끼리는 뒷선이 그대로 남는다");
+  assert.equal(next.CDM, undefined, "새 포메이션에 없는 자리는 비운다");
+});
+
+test("자리가 살아남아도 그 선수가 못 들어가면 비운다", () => {
+  // 3백으로 가면 LB·CB1 이 사라지고 CBL·CBC·CBR 만 남는다. GK 자리는 두 포메이션에 다 있다.
+  const byId = new Map<string, Card>([["mf", card("mf", { role: "미드필더" })]]);
+  const squad: Squad = { GK: { id: "mf", plus: 0 } }; // 억지로 꽂힌 미드필더
+  assert.deepEqual(carrySquad(squad, FORMATION_SLOTS["3-5-2"], byId), {}, "canPlace 를 다시 봐서 걷어낸다");
+});
+
+test("풀에 없는 선수는 포메이션을 바꿀 때 같이 걷힌다", () => {
+  const squad: Squad = { GK: { id: "사라진선수", plus: 0 } };
+  assert.deepEqual(carrySquad(squad, FORMATION_SLOTS["4-3-3"], new Map()), {});
 });

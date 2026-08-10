@@ -77,12 +77,10 @@ export function SquadPanel({
   const occupantCard = occupied ? byId.get(occupied.id) : undefined;
   const occupant: Candidate | null = occupied && occupantCard ? { ref: occupied, card: occupantCard } : null;
 
+  // 확인을 안 묻는다. 새 포메이션에도 있는 자리는 그대로 남으므로(squad.ts 의 carrySquad)
+  // 잃는 게 없다. 4-3-3 에서 4-4-2 로 가면 수비 다섯이 그대로 남고 미드필더·공격진만 흩어진다.
   function handleFormationClick(f: Formation) {
     if (f === formation) return;
-    // 포메이션이 바뀌면 슬롯 id 도 달라져 기존 배치가 새 포메이션과 안 맞을 수 있다.
-    // "맞는 자리만 남기기"는 반쯤 남은 배치가 오히려 헷갈려서, 계획서 판단대로 그냥
-    // 다 비운다. 되돌릴 수 없으니 비우기 전에 확인만 한다.
-    if (filledCount > 0 && !window.confirm("포메이션을 바꾸면 지금 짜둔 스쿼드가 비워져요. 바꿀까요?")) return;
     onFormationChange(f);
     setActiveSlotId(null);
   }
@@ -92,14 +90,16 @@ export function SquadPanel({
       <h2 className="text-sm font-bold tracking-wide text-zinc-500 uppercase">스쿼드</h2>
 
       {formation && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
+        /* 가로 스크롤 대신 접는다. 390px 드로어 안에서는 다섯 개가 한 줄에 안 들어가
+           마지막 포메이션이 잘려 있었고, 가로로 스크롤되는 줄은 있는지도 모르고 지나친다. */
+        <div className="flex flex-wrap gap-1.5">
           {FORMATIONS.map((f) => (
             <button
               key={f}
               type="button"
               onClick={() => handleFormationClick(f)}
               aria-pressed={f === formation}
-              className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${OUTLINE_FOCUS} ${
+              className={`rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors ${OUTLINE_FOCUS} ${
                 f === formation ? "bg-white text-zinc-950" : "bg-white/8 text-zinc-300 hover:bg-white/15"
               }`}
             >

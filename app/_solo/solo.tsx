@@ -9,7 +9,7 @@ import { cardValue, isBankrupt, type Pack } from "./economy";
 import { UpgradeOverlay } from "./upgrade-overlay";
 import { applyUpgrade, takeFrom, toSlots, type Owned, type SlotRef, type UpgradeResult } from "./vault";
 import { BEST_KEEP, clearRun, loadRun, newRun, saveRun, type Run } from "./storage";
-import { bumpPlus, isDuplicate, pruneSquad, type Formation } from "./squad";
+import { FORMATION_SLOTS, bumpPlus, carrySquad, isDuplicate, pruneSquad, type Formation } from "./squad";
 import { Opening } from "./opening";
 import { Result } from "./result";
 import { Shop } from "./shop";
@@ -244,7 +244,8 @@ export default function Solo({
   // 포메이션을 바꾸면 슬롯 id 가 달라져 기존 배치가 안 맞을 수 있다. squad-panel.tsx가
   // 비우기 전에 확인을 이미 받았으므로 여기서는 그냥 비운다.
   function changeFormation(f: Formation) {
-    setRun((r) => (r.formation === f ? r : { ...r, formation: f, squad: {} }));
+    // 통째로 비우지 않는다. 새 포메이션에도 있는 자리는 그대로 남긴다(carrySquad 주석 참고).
+    setRun((r) => (r.formation === f ? r : { ...r, formation: f, squad: carrySquad(r.squad, FORMATION_SLOTS[f], byId) }));
   }
 
   // 자발적 종료. 파산과 달리 보관함·보유액은 그대로 두고 over 만 켠다.

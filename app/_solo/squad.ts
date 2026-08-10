@@ -236,6 +236,31 @@ export function pruneSquad(squad: Squad, vault: Owned[]): Squad {
 }
 
 /**
+ * 포메이션을 바꿀 때 새 포메이션에도 있는 자리만 남긴다.
+ *
+ * 처음엔 통째로 비웠는데 그럴 이유가 없었다. 슬롯 id 를 실제로 대보니 포메이션끼리
+ * 꽤 겹친다 - 4백끼리는 GK·LB·CB1·CB2·RB 다섯 칸이 그대로고, 3백끼리도 GK·CBL·
+ * CBC·CBR 이 남는다. 4-3-3 에서 4-4-2 로 갈 때 수비를 통째로 다시 짜라는 건 실제
+ * 감독이 하는 일과 다르다. 미드필더·공격진만 흩어지는 게 맞다.
+ *
+ * 남길 때도 canPlace 를 다시 본다. 같은 id 가 살아남아도 그 자리가 기대하는 역할이
+ * 포메이션마다 다를 수 있어서다.
+ *
+ * 다 비우기를 그만두면서 "되돌릴 수 없다"는 확인 대화상자도 같이 없앴다. 잃는 게
+ * 없으면 물어볼 것도 없다.
+ */
+export function carrySquad(squad: Squad, toSlots: readonly Slot[], byId: Map<string, Card>): Squad {
+  const slotById = new Map(toSlots.map((s) => [s.id, s]));
+  const next: Squad = {};
+  for (const [slotId, owned] of Object.entries(squad)) {
+    const slotDef = slotById.get(slotId);
+    const card = byId.get(owned.id);
+    if (slotDef && card && canPlace(card, slotDef)) next[slotId] = owned;
+  }
+  return next;
+}
+
+/**
  * 강화 성공으로 카드가 plus+1 로 바뀌었을 때 스쿼드 슬롯도 새 plus 로 맞춘다. 같은
  * 선수이고 강화는 그 선수가 좋아진 것이지 사라진 게 아니므로 슬롯은 유지한다(파괴는
  * pruneSquad 로 비운다). ref 와 안 맞는 슬롯은 그대로 둔다.
