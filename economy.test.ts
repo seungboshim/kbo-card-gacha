@@ -186,10 +186,33 @@ test("강화 기대손익은 세 구간 규칙을 다섯 등급 전부에서 지
   }
 });
 
-test("강화비: 안전 구간(+0~+5)은 가치의 9% 다", () => {
+test("강화비: 안전 구간(+0~+5)은 가치의 9%, 다만 가치상승을 넘지 않는다", () => {
+  // 초반 몇 단계는 배수가 1.09 라 오르는 값이 강화비와 거의 같다. 정수 올림까지 겹치면
+  // "내는 돈 == 오르는 값"이 되거나 넘어버려서, 상한이 걸려 9% 보다 낮아진다.
   for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
     for (let n = 0; n <= 5; n++) {
-      assert.equal(upgradeCost(tier, n), Math.ceil(cardValue(tier, n) * 0.09), `${tier} +${n}`);
+      const gain = cardValue(tier, n + 1) - cardValue(tier, n);
+      const want = Math.min(Math.ceil(cardValue(tier, n) * 0.09), gain - 1);
+      assert.equal(upgradeCost(tier, n), want, `${tier} +${n}`);
+    }
+  }
+});
+
+test("어느 등급 어느 단계에서든 내는 돈이 오르는 값보다 적다", () => {
+  // 이겼는데도 손해인 화면이 나오면 안 된다. 실제로 레어 +11→+12 에서 값이 591 오르는데
+  // 보호권을 켜면 1,424 를 내야 했다(가치상승의 2.4배). 트로피 구간은 배수가 1.20 으로
+  // 떨어지는데 파괴율은 35~55% 로 치솟아, 보호료가 보상이 작아지는 자리에서만 폭발한다.
+  //
+  // 기대손익이 음수인 것과는 다른 이야기다. 그건 "여러 번 굴리면 밑진다"이고 이건
+  // "한 번 이기면 남는다"다. 뒤엣것이 없으면 이겨도 진 기분이 든다.
+  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
+    for (let n = 0; n < MAX_PLUS; n++) {
+      const gain = cardValue(tier, n + 1) - cardValue(tier, n);
+      const cost = upgradeCost(tier, n);
+      assert.ok(cost < gain, `${tier} +${n}: 강화비 ${cost} 가 가치상승 ${gain} 이상이다`);
+      if (oddsAt(n, false).destroy === 0) continue;
+      const withGuard = cost + guardFee(tier, n);
+      assert.ok(withGuard < gain, `${tier} +${n}: 보호권까지 ${withGuard} 가 가치상승 ${gain} 이상이다`);
     }
   }
 });
@@ -233,26 +256,35 @@ test("강화비: 도박·트로피 구간(+6~+14)은 기본가의 12% 로 고정
   }
 });
 
-test("보호권은 파괴가 있는 모든 단계에서 항상 EV 손해다", () => {
-  // 보호료는 기대 파괴손실보다 35% 비싸게 매긴다(guardFee 의 ×1.35). 그래서 보호를
-  // 켠 기대손익은 안 켠 것보다 항상 더 나쁘다 — 그래야 "필수 토글"이 아니라
-  // "마음 편함을 사는 토글"로 남는다. 계수가 1.0을 넘기만 하면 이 성질은 항상
-  // 성립한다(guardProfit − noGuardProfit = −파괴율×가치×(계수−1) < 0).
+test("보호권을 켜서 이득이 되는 칸은 없다", () => {
+  // 보호를 켠 기대손익이 어디서든 양수면 "늘 켜고 돌리기"가 카드도 안 잃고 돈도 버는
+  // 무위험 루프가 된다. 계수가 1.35 였을 때 실제로 +6~+8 이 그랬다(레어 +6: 성공 55%,
+  // 가치상승 162, 강화비 30, 보호료 38 → 기대손익 +21). 2.2 로 올려 막았다.
   for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
     for (let n = 0; n < MAX_PLUS; n++) {
       const off = oddsAt(n, false);
       if (off.destroy === 0) continue;
+      const gain = (off.success / 100) * (cardValue(tier, n + 1) - cardValue(tier, n));
+      const profit = gain - upgradeCost(tier, n) - guardFee(tier, n);
+      assert.ok(profit <= 0, `${tier} +${n}: 보호 켠 기대손익이 ${profit.toFixed(1)} 로 양수다`);
+    }
+  }
+});
+
+test("도박 구간(+6~+10)에서는 보호를 켜는 게 안 켜는 것보다 나쁘다", () => {
+  // 이 구간은 "카드를 걸까 말까"가 실제 선택이어야 한다. 보호가 이득이면 선택이 사라진다.
+  //
+  // 트로피 구간(+11~)은 반대로 보호가 낫다. 거기는 둘 다 크게 밑지는 자리라 손실을 줄이는
+  // 쪽이 맞고, 보호료에 상한이 걸려 있어(가치상승을 못 넘는다) 켜도 여전히 음수다.
+  // 그 구간은 카드가 아니라 돈으로 값을 치른다.
+  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
+    for (let n = 6; n <= 10; n++) {
+      const off = oddsAt(n, false);
       const now = cardValue(tier, n);
-      const next = cardValue(tier, n + 1);
-      const cost = upgradeCost(tier, n);
-      const fee = guardFee(tier, n);
-      const gain = (off.success / 100) * (next - now);
-      const noGuardProfit = gain - (off.destroy / 100) * now - cost;
-      const guardProfit = gain - (cost + fee);
-      assert.ok(
-        guardProfit < noGuardProfit,
-        `${tier} +${n}: 보호 켬 ${guardProfit} 가 안 켬 ${noGuardProfit} 보다 안 나쁘다`,
-      );
+      const gain = (off.success / 100) * (cardValue(tier, n + 1) - now);
+      const noGuard = gain - (off.destroy / 100) * now - upgradeCost(tier, n);
+      const withGuard = gain - upgradeCost(tier, n) - guardFee(tier, n);
+      assert.ok(withGuard < noGuard, `${tier} +${n}: 보호(${withGuard.toFixed(1)}) 가 무보호(${noGuard.toFixed(1)}) 보다 낫다`);
     }
   }
 });

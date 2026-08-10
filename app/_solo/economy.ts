@@ -241,30 +241,55 @@ export function oddsAt(plus: number, guard: boolean): Odds {
  * `round` 가 아니라 `ceil` 을 쓴다. 반올림은 작은 등급에서 기대손익을 양수 쪽으로
  * 밀어붙이는데, 커먼처럼 값이 30 인 카드는 1 크레딧 차이가 3% 라 흔들림이 크다.
  */
-export function upgradeCost(tier: TierKey, plus: number): number {
-  return plus <= 5
-    ? Math.ceil(cardValue(tier, plus) * 0.09) // 안전 구간: 가치 비율
-    : Math.ceil(BASE_VALUE[tier] * 0.12); // 도박·트로피 구간: 기본가 고정
-}
+/**
+ * 한 단계 성공했을 때 오르는 값. 아래 두 상한의 기준이다.
+ * 천장(MAX_PLUS)에서는 다음 단계가 없으므로 0 이다.
+ */
+const gainAt = (tier: TierKey, plus: number): number =>
+  plus >= MAX_PLUS ? 0 : cardValue(tier, plus + 1) - cardValue(tier, plus);
 
 /**
- * 강화 보호료 = ceil(카드 가치 × 파괴율 × 1.35).
+ * **성공하면 낸 돈보다 반드시 더 받는다.** 강화비도 보호료도 이 선을 못 넘는다.
  *
- * 계수를 낮춰 달라는 요청이 있었지만 1.35 가 바닥이다. 계수는 "기대 파괴손실보다 몇 배
- * 비싸게 받나"인데, 보호권을 켠 기대손익이 안 켠 것보다 **나빠야** 도박이 유지된다.
- * 안 그러면 늘 켜는 게 정답이 되어 도박 구간이 통째로 무위험 이득 구간이 되고, 그건
- * 예전에 걷어낸 노동 루프가 그대로 되살아나는 것이다.
+ * 이 규칙이 없으면 이겼는데도 손해인 화면이 나온다. 실제로 레어 +11→+12 에서 값이
+ * 591 오르는데 보호권까지 켜면 1,424 를 내야 했다(가치상승의 2.4배). 트로피 구간은
+ * 배수가 1.20 으로 떨어지는데 파괴율은 35~55% 로 치솟아서, 보호료가 보상이 작아지는
+ * 자리에서만 폭발한다.
  *
- * 필요한 계수는 `(무보호 기대손익 + 파괴율) / 파괴율` 이다. 지금 수치(레어 +9: 무보호
- * 기대손익 3.6%, 파괴율 11%)로 재면 1.33 이 나온다. 1.35 는 그 바로 위다. 1.25 로만
- * 내려도 보호를 켠 기대손익이 +0.8% 로 양수가 되어 "항상 켜기"가 최적이 된다.
- *
- * 더 싸게 하려면 도박 구간 이득(강화장사)을 같이 줄여야 하는데, 그건 방금 반대 방향으로
- * 조율한 참이라 안 건드린다. 스쿼드를 모으는 숨통은 안전 구간 강화비를 9% 로 낮춰
- * 틔웠다(위 upgradeCost 주석).
+ * 기대손익이 음수인 건 상관없다 — 그건 "여러 번 굴리면 밑진다"는 말이고, 이 규칙은
+ * "한 번 이겼을 때 남는다"는 말이다. 둘은 다르고, 뒤엣것이 없으면 이겨도 진 기분이 든다.
  */
+const capToGain = (raw: number, tier: TierKey, plus: number, alreadyPaid = 0): number => {
+  const room = gainAt(tier, plus) - alreadyPaid - 1;
+  return Math.max(1, Math.min(raw, room));
+};
+
+export function upgradeCost(tier: TierKey, plus: number): number {
+  const raw =
+    plus <= 5
+      ? Math.ceil(cardValue(tier, plus) * 0.09) // 안전 구간: 가치 비율
+      : Math.ceil(BASE_VALUE[tier] * 0.12); // 도박·트로피 구간: 기본가 고정
+  return capToGain(raw, tier, plus);
+}
+
 export function guardFee(tier: TierKey, plus: number): number {
-  return Math.ceil(cardValue(tier, plus) * (oddsAt(plus, false).destroy / 100) * 1.35);
+  const raw = Math.ceil(cardValue(tier, plus) * (oddsAt(plus, false).destroy / 100) * 2.2);
+  // 계수 2.2 와 상한이 한 쌍으로 움직인다. 둘 중 하나만 있으면 규칙이 깨진다.
+  //
+  // **계수 2.2**: 보호를 켠 기대손익이 어디서도 양수면 안 된다. 양수면 "늘 켜고 돌리기"가
+  // 카드도 안 잃고 돈도 버는 무위험 루프가 된다. 1.35 였을 때 실제로 +6~+8 이 그랬다
+  // (레어 +6: 성공 55%, 가치상승 162, 강화비 30, 보호료 38 → 기대손익 +21).
+  // 단계마다 필요한 계수를 다 재보니 +6 이 2.13 으로 제일 높았다(파괴율이 6% 로 낮은데
+  // 배수는 1.35 로 커서, 싼 보험료로 큰 상승을 지켜버린다). 2.2 는 그 바로 위다.
+  //
+  // **상한**: 계수만 올리면 트로피 구간에서 보호료가 가치상승을 넘어선다. 거기는 파괴율이
+  // 35~55% 라 계수를 곱하면 폭발한다. 상한이 그걸 자른다.
+  //
+  // 상한이 걸린 자리에서는 보호를 켠 기대손익이 gain×(성공률−1)+1 이라 성공률이 1 미만인
+  // 한 항상 음수다. 그래서 상한을 씌워도 "보호는 공짜가 아니다"가 안 깨진다. 다만
+  // 트로피 구간에서는 보호가 무보호보다 **낫다** — 둘 다 크게 밑지는 자리라 손실을
+  // 줄이는 쪽이 맞고, 대신 그 구간은 카드가 아니라 돈으로 값을 치른다.
+  return capToGain(raw, tier, plus, upgradeCost(tier, plus));
 }
 
 /**
