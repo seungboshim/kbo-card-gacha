@@ -141,16 +141,16 @@ function PitchLines() {
  * 컨테이너 세로 비율도 투수 밴드를 빼고 타자만 담게 3/4로 줄였다. viewBox는 늘 0~100
  * 정사각형이라 비율이 바뀌어도 슬롯과 그림이 같은 백분율 공간을 쓰는 건 안 변한다.
  */
-const HOME: [number, number] = [50, 53];
+const HOME: [number, number] = [50, 75.0];
 const BASES: [number, number][] = [
-  [66, 44], // 1루
-  [50, 35], // 2루
-  [34, 44], // 3루
+  [66, 62.3], // 1루
+  [50, 49.5], // 2루
+  [34, 62.3], // 3루
 ];
 // 파울라인을 홈에서 1·3루 방향으로 늘여 담장에 닿는 지점. 외야수 슬롯이 (20,12)·(80,12)
 // 라 여기를 좁게 잡으면 좌·우익수가 잔디 밖으로 걸쳐 나간다.
-const FOUL_L: [number, number] = [0, 22];
-const FOUL_R: [number, number] = [100, 22];
+const FOUL_L: [number, number] = [0, 31.1];
+const FOUL_R: [number, number] = [100, 31.1];
 
 function BallparkArt() {
   const diamond = [HOME, BASES[0], BASES[1], BASES[2]].map((p) => p.join(",")).join(" ");
@@ -168,23 +168,29 @@ function BallparkArt() {
             까다로운데, 제어점을 y=-8 로 빼면 가운데가 y≈2 까지 올라와 중견수(50,8)가
             확실히 안쪽에 선다. */}
         <path
-          d={`M${HOME} L${FOUL_L} C 0,-8 100,-8 ${FOUL_R} Z`}
+          d={`M${HOME} L${FOUL_L} C 0,-11 100,-11 ${FOUL_R} Z`}
           className="fill-emerald-800/70 stroke-white/25"
           vectorEffect="non-scaling-stroke"
         />
-        {/* 내야 흙. 다이아몬드보다 조금 크게 깔아야 베이스가 흙 위에 앉는다. */}
-        <path d={`M${HOME} L70,42 A 22 15 0 0 0 30,42 Z`} className="fill-amber-900/45" />
-        <polygon points={diamond} className="fill-none stroke-white/45" vectorEffect="non-scaling-stroke" />
+        {/* 내야 흙. 호로 그렸더니 점처럼 작게 뭉쳐서, 베이스 마름모를 그대로 키운
+            큰 마름모로 바꿨다. 좌표계가 세로로 늘어나 있어(preserveAspectRatio="none")
+            호는 반지름 두 개가 어떻게 눌릴지 예측이 안 되는데, 꼭짓점으로 그리면
+            늘어나든 말든 베이스와 같은 비율로 따라간다. */}
+        <polygon
+          points={`50,${HOME[1] + 6} 74,${BASES[0][1]} 50,${BASES[1][1] - 6} 26,${BASES[2][1]}`}
+          className="fill-amber-900/50"
+        />
+        <polygon points={diamond} className="fill-none stroke-white/55" vectorEffect="non-scaling-stroke" />
         {/* 베이스 셋과 홈플레이트 */}
         {BASES.map(([x, y]) => (
-          <rect key={`${x}-${y}`} x={x - 1.6} y={y - 1.6} width="3.2" height="3.2" className="fill-white/70" />
+          <rect key={`${x}-${y}`} x={x - 2} y={y - 2} width="4" height="4" className="fill-white/85" />
         ))}
         <polygon
           points={`${HOME[0] - 2},${HOME[1] - 2} ${HOME[0] + 2},${HOME[1] - 2} ${HOME[0] + 2},${HOME[1]} ${HOME[0]},${HOME[1] + 2} ${HOME[0] - 2},${HOME[1]}`}
           className="fill-white/85"
         />
         {/* 마운드. 다이아몬드 한가운데다. */}
-        <ellipse cx="50" cy="44" rx="4" ry="3" className="fill-amber-800/70" />
+        <ellipse cx="50" cy="62.3" rx="4" ry="3" className="fill-amber-800/70" />
       </g>
     </svg>
   );
