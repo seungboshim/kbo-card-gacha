@@ -9,10 +9,12 @@ import { cardValue, isBankrupt, type Pack } from "./economy";
 import { UpgradeOverlay } from "./upgrade-overlay";
 import { applyUpgrade, takeFrom, toSlots, type Owned, type SlotRef, type UpgradeResult } from "./vault";
 import { BEST_KEEP, clearRun, loadRun, newRun, saveRun, type Run } from "./storage";
-import { bumpPlus, pruneSquad } from "./squad";
+import { bumpPlus, isDuplicate, pruneSquad, type Formation } from "./squad";
 import { Opening } from "./opening";
 import { Result } from "./result";
 import { Shop } from "./shop";
+import { SquadDrawer } from "./squad-drawer";
+import { SquadPanel } from "./squad-panel";
 import { useFocusTrap } from "./use-focus-trap";
 import { VaultGrid } from "./vault-grid";
 
@@ -86,6 +88,8 @@ export default function Solo({
   const [opening, setOpening] = useState<{ pack: Pack; cards: Card[] } | null>(null);
   // "여기까지 하고 결과 보기" 확인 모달. 되돌릴 수 없어서 한 번 멈춰 세운다.
   const [endConfirm, setEndConfirm] = useState(false);
+  // 모바일 스쿼드 드로어가 펼쳐졌는지. PC에서는 CSS가 항상 펼친 상태로 그려 이 값을 무시한다.
+  const [squadOpen, setSquadOpen] = useState(false);
   const endCancelRef = useRef<HTMLButtonElement>(null);
   const endDialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(endDialogRef, endConfirm);
@@ -217,6 +221,32 @@ export default function Solo({
     if (result === "success") setUpgrading({ id: ref.id, plus: ref.plus + 1 });
   }
 
+  // 스쿼드는 전시용이라 경제에 안 닿는다(squad.ts 주석) - 그래도 커밋된 상태를
+  // 다시 확인하는 건 buy·sell·upgrade와 같은 이유다: 픽커가 계산해 넘긴 후보가
+  // 그새 낡았을 수 있다(보관함에서 카드가 빠졌거나 다른 자리에 먼저 꽂혔거나).
+  function placeInSquad(slotId: string, ref: SlotRef) {
+    setRun((r) => {
+      const owned = r.vault.some((c) => c.id === ref.id && c.plus === ref.plus);
+      if (!owned || isDuplicate(r.squad, slotId, ref.id)) return r;
+      return { ...r, squad: { ...r.squad, [slotId]: ref } };
+    });
+  }
+
+  function removeFromSquad(slotId: string) {
+    setRun((r) => {
+      if (!(slotId in r.squad)) return r;
+      const squad = { ...r.squad };
+      delete squad[slotId];
+      return { ...r, squad };
+    });
+  }
+
+  // 포메이션을 바꾸면 슬롯 id 가 달라져 기존 배치가 안 맞을 수 있다. squad-panel.tsx가
+  // 비우기 전에 확인을 이미 받았으므로 여기서는 그냥 비운다.
+  function changeFormation(f: Formation) {
+    setRun((r) => (r.formation === f ? r : { ...r, formation: f, squad: {} }));
+  }
+
   // 자발적 종료. 파산과 달리 보관함·보유액은 그대로 두고 over 만 켠다.
   function endNow() {
     setRun((r) => ({ ...r, over: true }));
@@ -228,72 +258,97 @@ export default function Solo({
     clearRun(season);
     setUpgrading(null);
     setOpening(null);
+    setSquadOpen(false);
     setRun(newRun(season));
   }
 
+  // 위에 뜬 게 없을 때만 결과로 넘어간다. 마지막 카드가 터지면서 파산하면 over 와
+  // 강화 결과가 같은 배치에 들어와, 그냥 두면 "파괴됐어요"를 한 번도 못 보여주고
+  // 화면이 결과로 튄다. 오버레이를 닫고 나서 결과를 보여준다.
+  // 스쿼드 드로어는 "play" 화면에서만 보여준다 - 결과·개봉 연출까지 덮으면 맥락이 안 맞는다.
+  const screen: "result" | "opening" | "play" = run.over && !upgrading ? "result" : opening ? "opening" : "play";
+
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-8 px-4 py-6">
-      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        {/* 좁은 화면에서 "혼자 / 서"로 끊기지 않게 각 덩어리를 통째로 줄바꿈한다 */}
-        <h1 className="flex flex-wrap items-baseline gap-x-1.5 text-lg font-black tracking-tight">
-          <span className="whitespace-nowrap">{sport.title}</span>
-          <span className="whitespace-nowrap text-zinc-500">혼자서</span>
-        </h1>
-        <div className="flex items-center gap-3">
-          {/* 파산 없이도 끝낼 수 있는 유일한 길. 없으면 수십 번 클릭이 남은 판에 갇힌다. */}
-          {!run.over && (
-            <button
-              type="button"
-              onClick={() => setEndConfirm(true)}
-              className={`rounded-lg bg-white/8 px-3 py-1.5 text-xs font-bold text-zinc-300 transition-colors hover:bg-white/15 ${FOCUS_RING}`}
-            >
-              여기까지 하고 결과 보기
-            </button>
-          )}
-          <span className="flex items-baseline gap-1.5 text-base font-black text-amber-300">
-            <span className="text-xs font-medium text-zinc-500">보유</span>
-            <Coin amount={run.credits} />
-          </span>
-        </div>
-      </header>
+    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-8 px-4 py-6 lg:max-w-6xl">
+      {/* PC는 좌측(헤더+상점+보관함) · 우측(스쿼드 판) 2열, 모바일은 오른쪽 열이
+          책갈피 드로어로 접힌다(squad-drawer.tsx). */}
+      <div className="flex flex-1 flex-col gap-8 lg:flex-row lg:items-start lg:gap-6">
+        {/* 드로어가 펼쳐진 동안은 이쪽이 "뒤 화면" - inert로 클릭·Tab을 다 막는다. */}
+        <div inert={squadOpen ? true : undefined} className="flex flex-1 flex-col gap-8">
+          <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            {/* 좁은 화면에서 "혼자 / 서"로 끊기지 않게 각 덩어리를 통째로 줄바꿈한다 */}
+            <h1 className="flex flex-wrap items-baseline gap-x-1.5 text-lg font-black tracking-tight">
+              <span className="whitespace-nowrap">{sport.title}</span>
+              <span className="whitespace-nowrap text-zinc-500">혼자서</span>
+            </h1>
+            <div className="flex items-center gap-3">
+              {/* 파산 없이도 끝낼 수 있는 유일한 길. 없으면 수십 번 클릭이 남은 판에 갇힌다. */}
+              {!run.over && (
+                <button
+                  type="button"
+                  onClick={() => setEndConfirm(true)}
+                  className={`rounded-lg bg-white/8 px-3 py-1.5 text-xs font-bold text-zinc-300 transition-colors hover:bg-white/15 ${FOCUS_RING}`}
+                >
+                  여기까지 하고 결과 보기
+                </button>
+              )}
+              <span className="flex items-baseline gap-1.5 text-base font-black text-amber-300">
+                <span className="text-xs font-medium text-zinc-500">보유</span>
+                <Coin amount={run.credits} />
+              </span>
+            </div>
+          </header>
 
-      {/* 위에 뜬 게 없을 때만 결과로 넘어간다. 마지막 카드가 터지면서 파산하면 over 와
-          강화 결과가 같은 배치에 들어와, 그냥 두면 "파괴됐어요"를 한 번도 못 보여주고
-          화면이 결과로 튄다. 오버레이를 닫고 나서 결과를 보여준다. */}
-      {run.over && !upgrading ? (
-        <Result run={run} byId={byId} sport={sport} onRestart={restart} />
-      ) : opening ? (
-        <Opening
-          sport={sport}
-          pack={opening.pack}
-          cards={opening.cards}
-          onDone={() => setOpening(null)}
-        />
-      ) : (
-        <>
-          <Shop credits={run.credits} sport={sport} onBuy={buy} />
-
-          <VaultGrid
-            slots={slots}
-            byId={byId}
-            sport={sport}
-            onSell={sell}
-            onUpgrade={setUpgrading}
-            upgradeOpen={upgrading !== null}
-          />
-
-          {upgrading && byId.get(upgrading.id) && (
-            <UpgradeOverlay
-              card={byId.get(upgrading.id)!}
+          {screen === "result" ? (
+            <Result run={run} byId={byId} sport={sport} onRestart={restart} />
+          ) : screen === "opening" && opening ? (
+            <Opening
               sport={sport}
-              plus={upgrading.plus}
-              credits={run.credits}
-              onClose={() => setUpgrading(null)}
-              onUpgrade={(result, pay) => upgrade(upgrading, result, pay)}
+              pack={opening.pack}
+              cards={opening.cards}
+              onDone={() => setOpening(null)}
             />
+          ) : (
+            <>
+              <Shop credits={run.credits} sport={sport} onBuy={buy} />
+
+              <VaultGrid
+                slots={slots}
+                byId={byId}
+                sport={sport}
+                onSell={sell}
+                onUpgrade={setUpgrading}
+                upgradeOpen={upgrading !== null}
+              />
+
+              {upgrading && byId.get(upgrading.id) && (
+                <UpgradeOverlay
+                  card={byId.get(upgrading.id)!}
+                  sport={sport}
+                  plus={upgrading.plus}
+                  credits={run.credits}
+                  onClose={() => setUpgrading(null)}
+                  onUpgrade={(result, pay) => upgrade(upgrading, result, pay)}
+                />
+              )}
+            </>
           )}
-        </>
-      )}
+        </div>
+
+        {screen === "play" && (
+          <SquadDrawer open={squadOpen} onOpenChange={setSquadOpen}>
+            <SquadPanel
+              squad={run.squad}
+              formation={run.formation}
+              vaultSlots={slots}
+              byId={byId}
+              onPlace={placeInSquad}
+              onRemove={removeFromSquad}
+              onFormationChange={changeFormation}
+            />
+          </SquadDrawer>
+        )}
+      </div>
 
       {endConfirm && (
         <div
