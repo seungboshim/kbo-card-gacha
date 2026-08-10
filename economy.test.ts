@@ -18,6 +18,8 @@ import { TIERS } from "./app/_game/deck.ts";
 import { toSlots, takeFrom, applyUpgrade, type Owned } from "./app/_solo/vault.ts";
 import { newRun, parseRun, serializeRun, runKey } from "./app/_solo/storage.ts";
 
+const TIER_KEYS = Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[];
+
 test("팩 세 종의 확률표 합이 각각 100%", () => {
   for (const p of PACKS) {
     const sum = TIERS.reduce((s, t) => s + p.rates[t.key], 0);
@@ -25,26 +27,17 @@ test("팩 세 종의 확률표 합이 각각 100%", () => {
   }
 });
 
-test("팩 엣지가 셋 다 플러스다", () => {
-  // 팩은 그대로 팔면 항상 손해다. 돈이 새는 곳을 팩 하나로 몰아야 강화가 만회 수단이
-  // 된다(반대로 두면 강화가 유일한 소각구가 되어 뭘 해도 줄어드는 느낌이 난다).
-  //
-  // "비쌀수록 엣지가 낮다"는 예전 성질이었지만 2026-08 재조율로 깨졌다. 플래티넘을
-  // 8장으로 늘려 엣지를 11.5%로 낮췄는데, 고급은 장수를 안 늘리고 가격만 올려서
-  // 엣지가 12.4%로 일반(8.6%)보다 커졌다. 셋은 애초에 전략적 선택지가 아니라
-  // 자금 구간별 진행 사다리라(economy.ts 의 PACKS 주석 참고) 엣지 순서 자체엔
-  // 의미를 두지 않는다 — 여기서는 셋 다 손해라는 것만 지킨다.
-  for (const p of PACKS) assert.ok(packExpectedValue(p) < p.price, `${p.name} 엣지가 마이너스`);
-});
-
 test("플래티넘 팩에는 커먼이 안 나온다", () => {
   assert.equal(PACKS[2].rates.COMMON, 0);
 });
 
-test("팩 가격이 100의 배수고 시작 크레딧보다 플래티넘이 비싸다", () => {
-  for (const p of PACKS) assert.equal(p.price % 100, 0, `${p.name} 가격 ${p.price}`);
-  assert.ok(PACKS[2].price > START_CREDITS);
-  assert.ok(PACKS[0].price < START_CREDITS);
+test("팩 엣지가 셋 다 플러스고, START_CREDITS 로는 플래티넘을 못 산다", () => {
+  // 팩은 그대로 팔면 항상 손해다. 돈이 새는 곳을 팩 하나로 몰아야 강화가 만회 수단이 된다.
+  // 플래티넘을 못 사는 시작 밑천도 그대로 지킨다 — 모아서 처음 사는 순간이 이 모드의
+  // 첫 목표라는 성질은 재조정과 무관하게 유지한다.
+  for (const p of PACKS) assert.ok(packExpectedValue(p) < p.price, `${p.name} 엣지가 마이너스`);
+  const platinum = PACKS.find((p) => p.key === "platinum")!;
+  assert.ok(START_CREDITS < platinum.price);
 });
 
 test("카드 가치는 등급과 강화 수치에 대해 단조 증가", () => {
@@ -61,7 +54,7 @@ test("카드 가치는 등급과 강화 수치에 대해 단조 증가", () => {
 test("MULT: cardValue 는 모든 등급에서 강화할수록 오른다", () => {
   // 단계별로 배수가 다르니(STEP_GROWTH), 등급 하나만 보고 넘기면 특정 등급에서
   // 역전이 나도 못 잡는다.
-  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
+  for (const tier of TIER_KEYS) {
     for (let n = 0; n < MAX_PLUS; n++) {
       assert.ok(cardValue(tier, n) < cardValue(tier, n + 1), `${tier} +${n} → +${n + 1} 이 안 오름`);
     }
@@ -75,26 +68,17 @@ test("천장 밖 강화 수치를 넣어도 NaN 이 안 나온다", () => {
   assert.ok(Number.isFinite(cardValue("RARE", -1)));
 });
 
-test("START_CREDITS 로는 플래티넘 팩을 못 산다", () => {
-  // 모아서 처음 사는 순간이 이 모드의 첫 목표다.
-  const platinum = PACKS.find((p) => p.key === "platinum")!;
-  assert.ok(START_CREDITS < platinum.price);
+test("언커먼 +13 이 레전드 +0 보다 비싸다", () => {
+  // 낮은 등급이라도 끝까지 밀면 값나가야 한다는 요구다. 실측: 언커먼 +13 = 2,121,
+  // 레전드 +0 = 2,000.
+  assert.ok(cardValue("UNCOMMON", 13) > cardValue("LEGEND", 0));
 });
 
-test("레전드 최고 강화가 5만 아래에서 멎는다", () => {
-  // 등급 간격 3.2배를 그대로 두고 총배수만 24.48배로 올리면 레전드 +15가 98,304까지
-  // 뛴다(docs/economy/2026-08-rebalance-24x.md Q2). "고강화 곡선이 너무 커지면
-  // 안 된다"는 요구를 지키려고 간격을 2.86배로 같이 좁혔다 — 48,944가 그 결과다.
+test("레전드 최고 강화가 55,000 아래에서 멎는다", () => {
+  // 파괴율을 크게 낮추면서 STEP_GROWTH 도 함께 낮춰(도박 1.30~1.38, 트로피 1.33)
+  // 고강화 곡선이 폭주하지 않게 잡았다. 실측 50,023.
   const max = cardValue("LEGEND", MAX_PLUS);
-  assert.ok(max > 45000 && max < 50000, `레전드 +${MAX_PLUS} 가치가 ${max}`);
-});
-
-test("+15는 등급 세 칸을 넘는다", () => {
-  // 15번 강화한 카드가 등급 하나를 이겨야 "만렙"이 의미 있다. 누적배수 24.4788배는
-  // 기하평균 등급 간격(2.86배) 기준 3.05칸이라, 언커먼 +15가 갓 뽑은 레전드보다,
-  // 커먼 +15가 갓 뽑은 에픽보다 비싸진다.
-  assert.ok(cardValue("UNCOMMON", MAX_PLUS) > cardValue("LEGEND", 0));
-  assert.ok(cardValue("COMMON", MAX_PLUS) > cardValue("EPIC", 0));
+  assert.ok(max < 55000, `레전드 +${MAX_PLUS} 가치가 ${max}`);
 });
 
 test("강화 확률 셋의 합이 각 단계에서 100%", () => {
@@ -126,7 +110,13 @@ test("천장을 넘으면 강화할 수 없다", () => {
   assert.equal(oddsAt(MAX_PLUS, false).success, 0);
 });
 
-test("보호권 값이 어느 단계에서도 카드 가치를 넘지 않는다", () => {
+test("파괴는 +6 부터 시작한다", () => {
+  // +0~+5 는 돈만 잃고 카드는 안 사라진다. +6 부터가 카드 목숨을 거는 구간이다.
+  for (let n = 0; n < 6; n++) assert.equal(oddsAt(n, false).destroy, 0, `+${n} 에 파괴가 있다`);
+  for (let n = 6; n < MAX_PLUS; n++) assert.ok(oddsAt(n, false).destroy > 0, `+${n} 에 파괴가 없다`);
+});
+
+test("보호권+강화비 합이 어느 단계에서도 카드 가치를 넘지 않는다", () => {
   // 카드보다 보호권이 비싸면 아무도 안 쓴다. 설계에서 한 번 밟은 함정이다.
   for (const tier of ["COMMON", "RARE", "LEGEND"] as const) {
     for (let n = 0; n < MAX_PLUS; n++) {
@@ -136,14 +126,26 @@ test("보호권 값이 어느 단계에서도 카드 가치를 넘지 않는다"
   }
 });
 
-test("파괴는 +6 부터 시작한다", () => {
-  // +0~+5 는 돈만 잃고 카드는 안 사라진다. 여기가 "감당할 수 있나"의 구간이고
-  // +6 부터가 "살아남을까"의 구간이다. 누적배수가 2배를 넘는 자리와 겹친다.
-  for (let n = 0; n < 6; n++) assert.equal(oddsAt(n, false).destroy, 0, `+${n} 에 파괴가 있다`);
-  for (let n = 6; n < MAX_PLUS; n++) assert.ok(oddsAt(n, false).destroy > 0, `+${n} 에 파괴가 없다`);
-  // 위 루프가 대신하는 구체적인 경계 두 지점도 그대로 짚어둔다.
-  assert.equal(oddsAt(5, false).destroy, 0);
-  assert.ok(oddsAt(6, false).destroy > 0);
+test("강화비: 안전 구간(+0~+5)은 가치의 5%, 다만 가치상승을 넘지 않는다", () => {
+  // "강화는 쉽게쉽게, 그렇다고 가치가 넘 높지는 않게"라는 요구로 9%에서 5%로 더 낮췄다.
+  for (const tier of TIER_KEYS) {
+    for (let n = 0; n <= 5; n++) {
+      const gain = cardValue(tier, n + 1) - cardValue(tier, n);
+      const want = Math.min(Math.ceil(cardValue(tier, n) * 0.05), gain - 1);
+      assert.equal(upgradeCost(tier, n), want, `${tier} +${n}`);
+    }
+  }
+});
+
+test("강화비: 도박·트로피 구간(+6~+14)은 기본가 대비 단계마다 3.5%p 씩 오른다", () => {
+  // +6 은 기본가의 12%, +14 는 40% 다. 예전엔 12% 고정이었다 — 파괴율을 크게 낮춘
+  // 만큼 강화비를 누진시켜야 트로피 구간이 계속 "미친 짓"으로 남는다.
+  for (const tier of TIER_KEYS) {
+    for (let n = 6; n < MAX_PLUS; n++) {
+      const want = Math.ceil(BASE_VALUE[tier] * (0.12 + 0.035 * (n - 6)));
+      assert.equal(upgradeCost(tier, n), want, `${tier} +${n}`);
+    }
+  }
 });
 
 /**
@@ -151,7 +153,7 @@ test("파괴는 +6 부터 시작한다", () => {
  *
  * 기대손익 = 성공률×(다음가치 − 지금가치) − 파괴율×지금가치 − 강화비.
  * cardValue·upgradeCost 가 실제로 돌려주는 정수로 재야 반올림에서 뒤집히는 단계가
- * 없는지도 같이 확인된다(연속값으로 재면 정수 반올림으로 생기는 뒤집힘을 놓친다).
+ * 없는지도 같이 확인된다.
  */
 function stepProfit(tier: keyof typeof BASE_VALUE, n: number): number {
   const o = oddsAt(n, false);
@@ -160,52 +162,14 @@ function stepProfit(tier: keyof typeof BASE_VALUE, n: number): number {
   return gain - loss;
 }
 
-test("강화 기대손익은 세 구간 규칙을 다섯 등급 전부에서 지킨다", () => {
-  // 직전 개편(B안)은 "모든 단계가 기대손익 음수"를 규칙으로 삼았다. 파괴가 +6부터만
-  // 있는 지금 구조에서 그 규칙은 카드를 걸어야 하는 도박 구간(+6~+10)조차 이득이
-  // 없다는 뜻이 되어 강화장사를 원리적으로 막아버렸다. 그래서 위험 0 / 도박 / 트로피,
-  // 세 구간으로 다시 나눈다(economy.ts 의 ODDS 위 주석에 규칙 전체가 있다).
+test("비용이 가치상승보다 적다: 다섯 등급 × 열다섯 단계, 무보호와 보호 둘 다", () => {
+  // 이겼는데도 손해인 화면이 나오면 안 된다. 기대손익이 음수인 것과는 다른
+  // 이야기다 — 그건 "여러 번 굴리면 밑진다"이고 이건 "한 번 이기면 남는다"다.
   //
-  // 커먼(기본가 30)은 강화비가 정수 올림(ceil)에 걸려 반올림 오차가 가장 크게
-  // 남는 등급이다. 세 구간 성질이 커먼에서도 지켜지는지 이 테스트가 직접 잰다.
-  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
-    // 위험 0 구간은 "부호"가 아니라 "절대액"으로 막는다. 예전엔 단계마다 음수여야
-    // 한다고 못박았는데, 그러면 안전 구간을 다 올렸을 때 반드시 손해가 되어
-    // "1~7카는 오히려 강화할수록 손해"라는 체감이 따라왔다. 지금은 부호가 가끔
-    // 양수여도 상관없고, 다 올려봤자 기본가의 몇 %도 못 버는지만 본다.
-    // 아래 "안전 구간만으로는 벌지도 잃지도 못한다" 테스트가 그 성질을 잰다.
-    for (let n = 6; n <= 10; n++) {
-      assert.ok(stepProfit(tier, n) > 0, `${tier} +${n}(도박 구간): 기대손익이 양수가 아니다`);
-    }
-    for (let n = 11; n <= 14; n++) {
-      const profit = stepProfit(tier, n);
-      const ratio = profit / cardValue(tier, n);
-      assert.ok(profit < 0, `${tier} +${n}(트로피 구간): 기대손익이 음수가 아니다`);
-      assert.ok(ratio < -0.2, `${tier} +${n}(트로피 구간): 가치 대비 ${(ratio * 100).toFixed(1)}% (−20% 보다 나빠야 함)`);
-    }
-  }
-});
-
-test("강화비: 안전 구간(+0~+5)은 가치의 9%, 다만 가치상승을 넘지 않는다", () => {
-  // 초반 몇 단계는 배수가 1.09 라 오르는 값이 강화비와 거의 같다. 정수 올림까지 겹치면
-  // "내는 돈 == 오르는 값"이 되거나 넘어버려서, 상한이 걸려 9% 보다 낮아진다.
-  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
-    for (let n = 0; n <= 5; n++) {
-      const gain = cardValue(tier, n + 1) - cardValue(tier, n);
-      const want = Math.min(Math.ceil(cardValue(tier, n) * 0.09), gain - 1);
-      assert.equal(upgradeCost(tier, n), want, `${tier} +${n}`);
-    }
-  }
-});
-
-test("어느 등급 어느 단계에서든 내는 돈이 오르는 값보다 적다", () => {
-  // 이겼는데도 손해인 화면이 나오면 안 된다. 실제로 레어 +11→+12 에서 값이 591 오르는데
-  // 보호권을 켜면 1,424 를 내야 했다(가치상승의 2.4배). 트로피 구간은 배수가 1.20 으로
-  // 떨어지는데 파괴율은 35~55% 로 치솟아, 보호료가 보상이 작아지는 자리에서만 폭발한다.
-  //
-  // 기대손익이 음수인 것과는 다른 이야기다. 그건 "여러 번 굴리면 밑진다"이고 이건
-  // "한 번 이기면 남는다"다. 뒤엣것이 없으면 이겨도 진 기분이 든다.
-  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
+  // 보호 쪽은 파괴가 있는 칸(+6~+14)만 잰다. UI 도 canGuard = destroy > 0 일 때만
+  // 토글을 보여준다(upgrade-overlay.tsx) — 파괴가 0 인 칸의 guardFee 는 capToGain
+  // 의 최소값(1)이 그대로 나오는 명목상의 수치라 "보호"라는 개념 자체가 없다.
+  for (const tier of TIER_KEYS) {
     for (let n = 0; n < MAX_PLUS; n++) {
       const gain = cardValue(tier, n + 1) - cardValue(tier, n);
       const cost = upgradeCost(tier, n);
@@ -217,68 +181,16 @@ test("어느 등급 어느 단계에서든 내는 돈이 오르는 값보다 적
   }
 });
 
-test("안전 구간만으로는 벌지도 잃지도 못한다", () => {
-  // 위험 0 구간(+0~+5 롤)을 끝까지 올려 +6 을 만들고 팔았을 때의 기대 손익이
-  // 기본가의 5% 안쪽이어야 한다.
-  //
-  // 이게 예전 "단계마다 기대손익 음수" 규칙을 대신한다. 그 규칙은 위험 없는 반복
-  // 클릭을 막으려던 것인데, 부호로 못박으니 안전 구간이 반드시 손해가 됐다. 막으려던
-  // 건 "반복 클릭으로 돈을 번다"이지 "올리면 손해다"가 아니었다. 절대액이 하찮으면
-  // 부호가 어느 쪽이든 아무도 그걸로 벌지 않는다.
-  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
-    let spend = 0;
-    for (let n = 0; n <= 5; n++) {
-      // 파괴가 없는 구간이라 성공할 때까지 두드리면 반드시 올라간다.
-      spend += upgradeCost(tier, n) / (oddsAt(n, false).success / 100);
-    }
-    const base = cardValue(tier, 0);
-    const net = cardValue(tier, 6) - base - spend;
-    // 기본가의 5%, 다만 최소 5크레딧까지는 봐준다. 커먼은 기본가가 30 이라 강화비
-    // 올림(ceil) 1크레딧이 곧 3% 다 — 백분율만 대면 반올림 잡음이 규칙 위반으로
-    // 잡힌다. "하찮은 금액"이라는 게 이 테스트의 뜻이고, 2크레딧은 어느 기준으로도
-    // 하찮다.
-    const slack = Math.max(base * 0.05, 5);
-    assert.ok(
-      Math.abs(net) < slack,
-      `${tier}: +0→+6 순손익 ${net.toFixed(0)} 이 허용치 ${slack.toFixed(0)} 를 넘는다`,
-    );
-  }
-});
-
-test("강화비: 도박·트로피 구간(+6~+14)은 기본가의 12% 로 고정된다", () => {
-  // 예전엔 기본가 20% 가 상한이라 가치가 20%를 넘어서는 순간부터만 걸렸다. 지금은
-  // 12% 가 +6부터 끝까지 그대로 강화비다(가치에 더는 비례하지 않는다) — "어차피
-  // 7카 8카는 가야 본전"이라던 피드백을 손익분기 +7로 당기려고 낮춘 값이다.
-  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
+test("보호를 켜면 안 켠 것보다 기대손익이 나쁘다 (파괴가 있는 모든 칸)", () => {
+  // **여기서 규칙 하나를 버렸다.** 예전엔 "보호를 켠 기대손익이 어디서도 양수면
+  // 안 된다"였다. 파괴율을 3~15%로 크게 낮추자 그 규칙과 "성공하면 남는 몫이
+  // 가치상승의 20% 이상이다"(아래 테스트)가 정면으로 부딪혔다 — 계수를 옛 규칙이
+  // 성립할 만큼 올리면 남는 몫이 깎이고, 20%를 지킬 만큼 낮추면 파괴율이 작은
+  // 구간에서 보호가 무위험 이득이 된다. 파괴가 3~7%로 작아진 이상 둘을 함께
+  // 지킬 계수가 없어 약한 규칙만 남긴다: 보호는 늘 안 켠 것보다 나쁘다(무위험
+  // 루프가 될 수 없다는 뜻이지, 손해가 없다는 뜻은 아니다).
+  for (const tier of TIER_KEYS) {
     for (let n = 6; n < MAX_PLUS; n++) {
-      assert.equal(upgradeCost(tier, n), Math.ceil(BASE_VALUE[tier] * 0.12), `${tier} +${n}`);
-    }
-  }
-});
-
-test("보호권을 켜서 이득이 되는 칸은 없다", () => {
-  // 보호를 켠 기대손익이 어디서든 양수면 "늘 켜고 돌리기"가 카드도 안 잃고 돈도 버는
-  // 무위험 루프가 된다. 계수가 1.35 였을 때 실제로 +6~+8 이 그랬다(레어 +6: 성공 55%,
-  // 가치상승 162, 강화비 30, 보호료 38 → 기대손익 +21). 2.2 로 올려 막았다.
-  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
-    for (let n = 0; n < MAX_PLUS; n++) {
-      const off = oddsAt(n, false);
-      if (off.destroy === 0) continue;
-      const gain = (off.success / 100) * (cardValue(tier, n + 1) - cardValue(tier, n));
-      const profit = gain - upgradeCost(tier, n) - guardFee(tier, n);
-      assert.ok(profit <= 0, `${tier} +${n}: 보호 켠 기대손익이 ${profit.toFixed(1)} 로 양수다`);
-    }
-  }
-});
-
-test("도박 구간(+6~+10)에서는 보호를 켜는 게 안 켜는 것보다 나쁘다", () => {
-  // 이 구간은 "카드를 걸까 말까"가 실제 선택이어야 한다. 보호가 이득이면 선택이 사라진다.
-  //
-  // 트로피 구간(+11~)은 반대로 보호가 낫다. 거기는 둘 다 크게 밑지는 자리라 손실을 줄이는
-  // 쪽이 맞고, 보호료에 상한이 걸려 있어(가치상승을 못 넘는다) 켜도 여전히 음수다.
-  // 그 구간은 카드가 아니라 돈으로 값을 치른다.
-  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
-    for (let n = 6; n <= 10; n++) {
       const off = oddsAt(n, false);
       const now = cardValue(tier, n);
       const gain = (off.success / 100) * (cardValue(tier, n + 1) - now);
@@ -289,57 +201,54 @@ test("도박 구간(+6~+10)에서는 보호를 켜는 게 안 켜는 것보다 �
   }
 });
 
+test("성공하면 남는 몫이 가치상승의 20% 이상이다 (파괴가 있는 모든 칸)", () => {
+  // "11강부터 고작 1원만 벌린다"던 옛 곡선을 막는 테스트다. 보호까지 켜고 이겨도
+  // 남는 게 하찮으면 안 된다 — 트로피 구간(+11~+14)이 특히 위험한 자리였다.
+  for (const tier of TIER_KEYS) {
+    for (let n = 6; n < MAX_PLUS; n++) {
+      const gain = cardValue(tier, n + 1) - cardValue(tier, n);
+      const margin = gain - upgradeCost(tier, n) - guardFee(tier, n);
+      assert.ok(margin >= gain * 0.2, `${tier} +${n}: 남는 몫 ${margin} 이 가치상승의 20%(${(gain * 0.2).toFixed(1)}) 보다 적다`);
+    }
+  }
+});
+
+test("안전·도박 구간(+0~+10)은 기대손익 양수, 트로피 구간(+11~+14)은 음수", () => {
+  // 다섯 등급 전부에서 지켜야 한다. 실측(레어): +0 +3.8%, +6 +9.7%, +10 +3.7%,
+  // +11 −1.5%, +14 −10.5%.
+  for (const tier of TIER_KEYS) {
+    for (let n = 0; n <= 10; n++) {
+      assert.ok(stepProfit(tier, n) > 0, `${tier} +${n}(안전·도박): 기대손익이 양수가 아니다`);
+    }
+    for (let n = 11; n < MAX_PLUS; n++) {
+      assert.ok(stepProfit(tier, n) < 0, `${tier} +${n}(트로피): 기대손익이 음수가 아니다`);
+    }
+  }
+});
+
+test("기대손익률(가치 대비 %)의 최댓값은 +6이다", () => {
+  // 도박 구간 초입이 제일 남는다 — 파괴율이 갓 생겨 낮은데(3%) 성공 배수는 이미
+  // 크기(1.30) 때문이다. 뒤로 갈수록 파괴율이 성공 배수보다 빠르게 커져 비율이
+  // 줄어든다(레어 기준 +6 9.7% → +10 3.7%).
+  for (const tier of TIER_KEYS) {
+    let bestRatio = -Infinity;
+    let bestN = -1;
+    for (let n = 0; n < MAX_PLUS; n++) {
+      const ratio = stepProfit(tier, n) / cardValue(tier, n);
+      if (ratio > bestRatio) {
+        bestRatio = ratio;
+        bestN = n;
+      }
+    }
+    assert.equal(bestN, 6, `${tier}: 최댓값이 +${bestN} 에 있다`);
+  }
+});
+
 test("강화비와 보호료는 카드가 비쌀수록 비싸다", () => {
   assert.ok(upgradeCost("LEGEND", 0) > upgradeCost("COMMON", 0));
   assert.ok(upgradeCost("EPIC", 5) > upgradeCost("EPIC", 0));
-  // 보호료는 파괴율이 0인 +0~+5 에서 공짜고, 파괴가 시작되는 +6 부터 갈수록 오른다.
+  // 보호료는 파괴율이 0인 +0~+5 에서 사실상 공짜고, 파괴가 시작되는 +6 부터 갈수록 오른다.
   assert.ok(guardFee("EPIC", 0) < guardFee("EPIC", MAX_PLUS - 1));
-});
-
-test("강화장사가 성립한다: 레어를 +0에서 +10까지 밀면 기대값으로 순이익이다", () => {
-  // 도박 구간(+6~+10)이 단계별로 양수라는 것만으로는 "밀 만한 장사인가"가 안
-  // 보인다. +0에서 시작해 +10까지 실제로 밀었을 때(실패하면 그 단계에서 계속
-  // 재시도한다고 보고) 기대값으로 남는지를 끝까지 계산해서 확인한다.
-  //
-  // 각 단계의 기대 클릭 수는 1/((성공률+파괴율)/100) 이다(실패는 그 단계에 머물
-  // 뿐이라 재시도 횟수에서 빠진다). 그 단계까지 살아 있을 확률은 앞 단계들의
-  // 성공률/(성공률+파괴율) 누적곱이다. 기대 비용은 이 둘과 강화비를 곱해 더한
-  // 것이고, 기대 회수는 +10까지 살아 있을 확률 × cardValue(RARE, 10) 다.
-  const tier = "RARE" as const;
-  let survive = 1;
-  let expectedCost = 0;
-  for (let n = 0; n < 10; n++) {
-    const o = oddsAt(n, false);
-    const expectedClicks = 1 / ((o.success + o.destroy) / 100);
-    expectedCost += survive * expectedClicks * upgradeCost(tier, n);
-    survive *= o.success / (o.success + o.destroy);
-  }
-  const expectedReturn = survive * cardValue(tier, 10);
-  const netProfit = expectedReturn - BASE_VALUE[tier] - expectedCost;
-  assert.ok(netProfit > 0, `레어 +0→+10 강화장사 순이익이 ${netProfit.toFixed(2)} (양수여야 함)`);
-});
-
-/** +0에서 target까지 밀고 살아남았을 때의 기대 순이익. 계산식은 위 테스트와 같다. */
-function pushNetProfit(tier: keyof typeof BASE_VALUE, target: number): number {
-  let survive = 1;
-  let expectedCost = 0;
-  for (let n = 0; n < target; n++) {
-    const o = oddsAt(n, false);
-    const expectedClicks = 1 / ((o.success + o.destroy) / 100);
-    expectedCost += survive * expectedClicks * upgradeCost(tier, n);
-    survive *= o.success / (o.success + o.destroy);
-  }
-  const expectedReturn = survive * cardValue(tier, target);
-  return expectedReturn - BASE_VALUE[tier] - expectedCost;
-}
-
-test("손익분기가 +8 이하다: 레어·에픽·레전드를 +8까지 밀면 기대값으로 순이익", () => {
-  // 재조율 전에는 세 등급 다 손익분기가 +9였다(+8 순이익이 음수). 도박 구간 강화비를
-  // 기본가 20%→12%로 낮춰 손익분기를 +7로 당겼으니, +8에서는 이미 양수여야 한다.
-  for (const tier of ["RARE", "EPIC", "LEGEND"] as const) {
-    const profit = pushNetProfit(tier, 8);
-    assert.ok(profit > 0, `${tier} +0→+8 순이익이 ${profit.toFixed(2)} (양수여야 함)`);
-  }
 });
 
 test("파산 판정: 제일 싼 팩도 못 사고 보관함도 비었을 때만", () => {
