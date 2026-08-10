@@ -229,7 +229,7 @@ export function UpgradeOverlay({
                     />
                   </span>
                   <span className="flex-1 text-xs font-bold">
-                    파괴 보호권
+                    강화 보호권
                     <span className="block text-[11px] font-medium text-zinc-500">
                       {guardOn ? "터져도 카드가 안 사라져요" : "켜면 파괴 확률이 0이 돼요"}
                     </span>

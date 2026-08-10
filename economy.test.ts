@@ -169,9 +169,11 @@ test("강화 기대손익은 세 구간 규칙을 다섯 등급 전부에서 지
   // 커먼(기본가 30)은 강화비가 정수 올림(ceil)에 걸려 반올림 오차가 가장 크게
   // 남는 등급이다. 세 구간 성질이 커먼에서도 지켜지는지 이 테스트가 직접 잰다.
   for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
-    for (let n = 0; n <= 5; n++) {
-      assert.ok(stepProfit(tier, n) < 0, `${tier} +${n}(위험 0 구간): 기대손익이 음수가 아니다`);
-    }
+    // 위험 0 구간은 "부호"가 아니라 "절대액"으로 막는다. 예전엔 단계마다 음수여야
+    // 한다고 못박았는데, 그러면 안전 구간을 다 올렸을 때 반드시 손해가 되어
+    // "1~7카는 오히려 강화할수록 손해"라는 체감이 따라왔다. 지금은 부호가 가끔
+    // 양수여도 상관없고, 다 올려봤자 기본가의 몇 %도 못 버는지만 본다.
+    // 아래 "안전 구간만으로는 벌지도 잃지도 못한다" 테스트가 그 성질을 잰다.
     for (let n = 6; n <= 10; n++) {
       assert.ok(stepProfit(tier, n) > 0, `${tier} +${n}(도박 구간): 기대손익이 양수가 아니다`);
     }
@@ -184,15 +186,39 @@ test("강화 기대손익은 세 구간 규칙을 다섯 등급 전부에서 지
   }
 });
 
-test("강화비: 안전 구간(+0~+5)은 가치의 11% 그대로다", () => {
-  // 2026-08 재조율은 도박 구간 상한만 낮췄다(20%→12%). 안전 구간(가치×11%)은 하나도
-  // 안 바뀌었다는 걸 다섯 등급 전부에서 못박는다 — 여기서 값이 움직이면 "위험 0
-  // 구간은 늘 음수"라는 규칙이 반올림 오차로 뒤집힐 수 있는 자리다(economy.ts 의
-  // upgradeCost 주석 참고).
+test("강화비: 안전 구간(+0~+5)은 가치의 9% 다", () => {
   for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
     for (let n = 0; n <= 5; n++) {
-      assert.equal(upgradeCost(tier, n), Math.ceil(cardValue(tier, n) * 0.11), `${tier} +${n}`);
+      assert.equal(upgradeCost(tier, n), Math.ceil(cardValue(tier, n) * 0.09), `${tier} +${n}`);
     }
+  }
+});
+
+test("안전 구간만으로는 벌지도 잃지도 못한다", () => {
+  // 위험 0 구간(+0~+5 롤)을 끝까지 올려 +6 을 만들고 팔았을 때의 기대 손익이
+  // 기본가의 5% 안쪽이어야 한다.
+  //
+  // 이게 예전 "단계마다 기대손익 음수" 규칙을 대신한다. 그 규칙은 위험 없는 반복
+  // 클릭을 막으려던 것인데, 부호로 못박으니 안전 구간이 반드시 손해가 됐다. 막으려던
+  // 건 "반복 클릭으로 돈을 번다"이지 "올리면 손해다"가 아니었다. 절대액이 하찮으면
+  // 부호가 어느 쪽이든 아무도 그걸로 벌지 않는다.
+  for (const tier of Object.keys(BASE_VALUE) as (keyof typeof BASE_VALUE)[]) {
+    let spend = 0;
+    for (let n = 0; n <= 5; n++) {
+      // 파괴가 없는 구간이라 성공할 때까지 두드리면 반드시 올라간다.
+      spend += upgradeCost(tier, n) / (oddsAt(n, false).success / 100);
+    }
+    const base = cardValue(tier, 0);
+    const net = cardValue(tier, 6) - base - spend;
+    // 기본가의 5%, 다만 최소 5크레딧까지는 봐준다. 커먼은 기본가가 30 이라 강화비
+    // 올림(ceil) 1크레딧이 곧 3% 다 — 백분율만 대면 반올림 잡음이 규칙 위반으로
+    // 잡힌다. "하찮은 금액"이라는 게 이 테스트의 뜻이고, 2크레딧은 어느 기준으로도
+    // 하찮다.
+    const slack = Math.max(base * 0.05, 5);
+    assert.ok(
+      Math.abs(net) < slack,
+      `${tier}: +0→+6 순손익 ${net.toFixed(0)} 이 허용치 ${slack.toFixed(0)} 를 넘는다`,
+    );
   }
 });
 
