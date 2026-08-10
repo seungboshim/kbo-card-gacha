@@ -117,6 +117,14 @@ export const FORMATION_SLOTS: Record<Formation, readonly Slot[]> = {
 // KBO 데이터의 pos 는 내야수·외야수·포수까지만 오고 유격수/2루수 같은 세부 포지션이
 // 없다(kbo.ts 주석 참고). 그래서 내야수 4칸·외야수 3칸 모두 exact 가 똑같다 -
 // 세부가 없으니 아무 내야수나 아무 내야 슬롯에 서면 다 "정 포지션"이다.
+//
+// 투수 슬롯(SP1~5·RP1~4·CL)의 x·y 는 화면에 안 쓰인다. 투수 열 명을 야구장 그림
+// 밖에 절대좌표로 흩어두면 "선발"·"중계"·"마무리" 라벨이 슬롯마다 반복돼 시끄러워서,
+// squad-field.tsx 가 이 셋을 묶어 줄 이름 하나 + flex 로 나열하는 세 줄로 그린다
+// (구현은 그쪽 PitcherRows 참고). 그래도 x·y 를 지우지 않는 건 Slot 타입 하나를 축구·
+// 야구·타자·투수가 다 같이 쓰게 둬서다 - 지우면 이 슬롯들만 다른 타입이 되어
+// canPlace·squadValue 같은 공용 함수가 갈라져야 한다. 화면 순서는 이 배열 순서
+// (SP1→SP5, RP1→RP4, CL)를 그대로 따르므로 순서를 바꾸면 화면도 바뀐다.
 export const BASEBALL_SLOTS: readonly Slot[] = [
   slot("OF1", "OF", "외야수", 20, 12, "외야수"),
   slot("OF2", "OF", "외야수", 50, 8, "외야수"),

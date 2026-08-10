@@ -12,13 +12,24 @@ import { matchesExact, type Slot as FieldSlot, type Squad } from "./squad";
 // --tw-outline-style을 none으로 고정해버려 focus-visible:outline-2가 안 그려진다).
 const OUTLINE_FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80";
 
-/** 슬롯 하나. 비었으면 점선 원 + 라벨, 찼으면 둥근 사진 + 이름 + 강화 칩만(카드 전체는 넣지 않는다 - 19칸을 한 화면에 깔면 PlayerCard는 아무것도 안 보인다). */
+// 야구 투수 열 명을 묶는 세 줄. squad.ts의 BASEBALL_SLOTS 배열 순서(SP1→SP5→RP1→RP4→CL)가
+// 곧 화면에 나열되는 순서다 - 여기서 순서를 다시 정하지 않는다.
+const PITCHER_GROUPS = new Set<FieldSlot["group"]>(["SP", "RP", "CL"]);
+const PITCHER_ROWS: { label: string; group: FieldSlot["group"] }[] = [
+  { label: "선발", group: "SP" },
+  { label: "중계", group: "RP" },
+  { label: "마무리", group: "CL" },
+];
+
+/** 슬롯 하나. 비었으면 점선 원(+라벨), 찼으면 둥근 사진 + 이름 + 강화 칩만(카드 전체는 넣지 않는다 - 19칸을 한 화면에 깔면 PlayerCard는 아무것도 안 보인다). */
 function SlotButton({
   slotDef,
   owned,
   card,
   dim,
   onClick,
+  position,
+  hideEmptyLabel = false,
 }: {
   slotDef: FieldSlot;
   owned?: { id: string; plus: number };
@@ -26,17 +37,25 @@ function SlotButton({
   /** 픽커가 다른 슬롯을 다루는 중이라 이 슬롯은 지금 손댈 대상이 아니라는 표시. */
   dim: boolean;
   onClick: () => void;
+  /** 있으면 필드 그림 위 절대좌표(축구 11명·야구 타자 9명), 없으면 보통 흐름(야구 투수
+   *  세 줄) - squad-field.tsx의 PITCHER_ROWS가 이 값을 안 넘긴다. */
+  position?: { x: number; y: number };
+  /** 투수 줄처럼 왼쪽에 줄 이름을 이미 한 번 적어둔 경우, 빈 자리마다 반복되는
+   *  라벨을 뺀다("선발 ●●●●●" 밑에 "선발"이 다섯 번 더 안 달리게). */
+  hideEmptyLabel?: boolean;
 }) {
   const filling = owned && card ? { owned, card } : null;
   return (
     <button
       type="button"
       onClick={onClick}
-      style={{ left: `${slotDef.x}%`, top: `${slotDef.y}%` }}
+      style={position ? { left: `${position.x}%`, top: `${position.y}%` } : undefined}
       aria-label={
         filling ? `${slotDef.label} 자리 · ${filling.card.name}, 다시 고르기` : `${slotDef.label} 자리, 비어 있음`
       }
-      className={`absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 rounded-2xl p-0.5 transition-opacity ${OUTLINE_FOCUS} ${dim ? "opacity-35" : ""}`}
+      className={`flex flex-col items-center gap-0.5 rounded-2xl p-0.5 transition-opacity ${
+        position ? "absolute -translate-x-1/2 -translate-y-1/2" : "relative"
+      } ${OUTLINE_FOCUS} ${dim ? "opacity-35" : ""}`}
     >
       {filling ? (
         <>
@@ -77,9 +96,11 @@ function SlotButton({
       ) : (
         <>
           <span className="h-9 w-9 rounded-full border-2 border-dashed border-white/35 sm:h-11 sm:w-11" />
-          <span className="max-w-[54px] truncate text-[9px] font-semibold text-white/55 sm:max-w-[64px] sm:text-[10px]">
-            {slotDef.label}
-          </span>
+          {!hideEmptyLabel && (
+            <span className="max-w-[54px] truncate text-[9px] font-semibold text-white/55 sm:max-w-[64px] sm:text-[10px]">
+              {slotDef.label}
+            </span>
+          )}
         </>
       )}
     </button>
@@ -112,9 +133,10 @@ function PitchLines() {
  * 늘어나는 좌표계라 선 굵기가 세로로 눌리므로 획에는 `vector-effect="non-scaling-stroke"`
  * 를 건다. 도형이 눌리는 건 오히려 맞다 - 슬롯과 같은 공간에 있어야 하니까.
  *
- * 좌표 근거(squad.ts 의 BASEBALL_SLOTS):
- * 외야 8~12 · 내야 38~42 · 포수 58 · 투수진 80~98. 그래서 그라운드는 y 0~66 을 쓰고
- * 그 아래를 투수진 구역으로 가른다.
+ * 좌표 근거(squad.ts 의 BASEBALL_SLOTS): 외야 8~12 · 내야 38~42 · 포수 58.
+ * 투수 열 명은 이제 이 그림 위에 안 앉는다(SquadField의 투수진 세 줄 참고) - 그래서
+ * 컨테이너 세로 비율도 투수 밴드를 빼고 타자만 담게 3/4로 줄였다. viewBox는 늘 0~100
+ * 정사각형이라 비율이 바뀌어도 슬롯과 그림이 같은 백분율 공간을 쓰는 건 안 변한다.
  */
 const HOME: [number, number] = [50, 53];
 const BASES: [number, number][] = [
@@ -148,10 +170,7 @@ function BallparkArt() {
           vectorEffect="non-scaling-stroke"
         />
         {/* 내야 흙. 다이아몬드보다 조금 크게 깔아야 베이스가 흙 위에 앉는다. */}
-        <path
-          d={`M${HOME} L70,42 A 22 15 0 0 0 30,42 Z`}
-          className="fill-amber-900/45"
-        />
+        <path d={`M${HOME} L70,42 A 22 15 0 0 0 30,42 Z`} className="fill-amber-900/45" />
         <polygon points={diamond} className="fill-none stroke-white/45" vectorEffect="non-scaling-stroke" />
         {/* 베이스 셋과 홈플레이트 */}
         {BASES.map(([x, y]) => (
@@ -168,16 +187,54 @@ function BallparkArt() {
   );
 }
 
-/** 투수진 구역. 그라운드 그림 밖 아래쪽(y 66% 부터)에 줄지어 선다. */
-function BullpenBand() {
+/**
+ * 야구 투수진. 그림 없이 줄 이름(선발·중계·마무리)을 왼쪽에 한 번만 적고 슬롯을
+ * flex로 나열한다 - 예전엔 슬롯마다 라벨이 붙어 "선발"이 다섯 번 반복됐다. slots
+ * 자체가 빈 슬롯도 포함한 고정 배열이라(squad.ts) 필터링만 해도 빈 칸이 유지된다.
+ */
+function PitcherRows({
+  slots,
+  squad,
+  byId,
+  activeSlotId,
+  onSlotClick,
+}: {
+  slots: readonly FieldSlot[];
+  squad: Squad;
+  byId: Map<string, Card>;
+  activeSlotId: string | null;
+  onSlotClick: (slotId: string) => void;
+}) {
   return (
-    <div
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-x-0 bottom-0 h-[34%] border-t border-dashed border-white/15 bg-black/30"
-    >
-      <span className="absolute top-1.5 left-2 text-[9px] font-bold tracking-wide text-white/35 uppercase">
-        투수진
-      </span>
+    <div className="flex flex-col gap-2.5 rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
+      {PITCHER_ROWS.map(({ label, group }) => (
+        <div key={group} className="flex items-center gap-1.5">
+          {/* 390px 드로어에서 다섯 칸(선발)이 한 줄에 40px씩 들어가야 해서 라벨·칸 간격을
+              빠듯하게 잡았다(실측). */}
+          <span className="w-9 shrink-0 text-[9px] font-bold tracking-wide text-white/50 sm:w-14 sm:text-xs">
+            {label}
+          </span>
+          <div className="flex flex-1 flex-wrap gap-x-1 gap-y-2.5">
+            {slots
+              .filter((s) => s.group === group)
+              .map((s) => {
+                const owned = squad[s.id];
+                const card = owned ? byId.get(owned.id) : undefined;
+                return (
+                  <SlotButton
+                    key={s.id}
+                    slotDef={s}
+                    owned={owned}
+                    card={card}
+                    dim={activeSlotId !== null && activeSlotId !== s.id}
+                    onClick={() => onSlotClick(s.id)}
+                    hideEmptyLabel
+                  />
+                );
+              })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -200,38 +257,39 @@ export function SquadField({
   activeSlotId: string | null;
   onSlotClick: (slotId: string) => void;
 }) {
+  const dim = (id: string) => activeSlotId !== null && activeSlotId !== id;
+  // 야구는 타자 9명만 필드 그림 위 절대좌표로, 투수 열 명은 PitcherRows(flex)로 뺀다.
+  // 축구는 예전 그대로 11명 전부 한 덩어리 절대좌표다.
+  const onFieldSlots = isFootball ? slots : slots.filter((s) => !PITCHER_GROUPS.has(s.group));
+
   return (
-    // 배경(잔디 색·장식선)만 overflow-hidden으로 둥글게 자르고, 슬롯 레이어는 안 자른다.
-    // 마무리(CL, y=98)처럼 가장자리에 가까운 슬롯은 라벨까지 합친 버튼 높이의 절반이
-    // -translate-y-1/2로 y=100% 밖까지 걸치는데, 슬롯까지 한 겹에서 overflow-hidden을
-    // 걸면 그 라벨이 통째로 잘려나간다(실측으로 확인).
-    <div className={`relative w-full ${isFootball ? "aspect-[3/4]" : "aspect-[3/5]"}`}>
-      <div
-        className={`absolute inset-0 overflow-hidden rounded-2xl ${isFootball ? "bg-emerald-900" : "bg-emerald-950"}`}
-      >
-        {isFootball ? (
-          <PitchLines />
-        ) : (
-          <>
-            <BallparkArt />
-            <BullpenBand />
-          </>
-        )}
+    <div className="flex flex-col gap-3">
+      <div className="relative w-full aspect-[3/4]">
+        <div
+          className={`absolute inset-0 overflow-hidden rounded-2xl ${isFootball ? "bg-emerald-900" : "bg-emerald-950"}`}
+        >
+          {isFootball ? <PitchLines /> : <BallparkArt />}
+        </div>
+        {onFieldSlots.map((s) => {
+          const owned = squad[s.id];
+          const card = owned ? byId.get(owned.id) : undefined;
+          return (
+            <SlotButton
+              key={s.id}
+              slotDef={s}
+              owned={owned}
+              card={card}
+              position={{ x: s.x, y: s.y }}
+              dim={dim(s.id)}
+              onClick={() => onSlotClick(s.id)}
+            />
+          );
+        })}
       </div>
-      {slots.map((s) => {
-        const owned = squad[s.id];
-        const card = owned ? byId.get(owned.id) : undefined;
-        return (
-          <SlotButton
-            key={s.id}
-            slotDef={s}
-            owned={owned}
-            card={card}
-            dim={activeSlotId !== null && activeSlotId !== s.id}
-            onClick={() => onSlotClick(s.id)}
-          />
-        );
-      })}
+
+      {!isFootball && (
+        <PitcherRows slots={slots} squad={squad} byId={byId} activeSlotId={activeSlotId} onSlotClick={onSlotClick} />
+      )}
     </div>
   );
 }
