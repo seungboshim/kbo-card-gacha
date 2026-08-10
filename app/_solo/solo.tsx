@@ -9,6 +9,7 @@ import { cardValue, isBankrupt, type Pack } from "./economy";
 import { UpgradeOverlay } from "./upgrade-overlay";
 import { applyUpgrade, takeFrom, toSlots, type Owned, type SlotRef, type UpgradeResult } from "./vault";
 import { BEST_KEEP, clearRun, loadRun, newRun, saveRun, type Run } from "./storage";
+import { bumpPlus, pruneSquad } from "./squad";
 import { Opening } from "./opening";
 import { Result } from "./result";
 import { Shop } from "./shop";
@@ -104,7 +105,13 @@ export default function Solo({
     // 카드 한 장이 파산 판정을 영영 막아 런이 결과 화면에 못 간다.
     const ids = new Set(pool.map((c) => c.id));
     const vault = loaded.vault.filter((c) => ids.has(c.id));
-    const pruned = vault.length === loaded.vault.length ? loaded : { ...loaded, vault };
+    // 방출된 선수가 스쿼드에도 꽂혀 있었으면 마저 걷어낸다 - 안 그러면 방출된 선수가
+    // 스쿼드 점수판에 유령처럼 계속 남는다.
+    const squad = pruneSquad(loaded.squad, vault);
+    const pruned =
+      vault.length === loaded.vault.length && Object.keys(squad).length === Object.keys(loaded.squad).length
+        ? loaded
+        : { ...loaded, vault, squad };
 
     // settleOver 를 여기도 거친다. 정상 플레이에서는 저장 전에 항상 이미 거쳤을 값이지만,
     // 방금 걷어낸 뒤라면 그 자리에서 파산이 될 수 있다.
@@ -171,7 +178,10 @@ export default function Solo({
         const card = byId.get(p.ref.id);
         if (card) total += cardValue(card.tier, p.ref.plus) * taken;
       }
-      return settleOver({ ...r, vault, credits: r.credits + total });
+      // 판 카드가 스쿼드에 꽂혀 있었고 그게 마지막 한 장이었으면 스쿼드에서도 뺀다.
+      // 여러 장 중 일부만 팔렸으면(같은 id+강화 수치가 vault 에 남아 있으면) 안 건드린다.
+      const squad = pruneSquad(r.squad, vault);
+      return settleOver({ ...r, vault, squad, credits: r.credits + total });
     });
   }
 
@@ -196,7 +206,11 @@ export default function Solo({
       // 같은 선수의 +3 과 +5 가 둘 다 도감에 뜨면 자리만 차지한다.
       const best =
         result === "success" ? mergeBest(r.best, [{ id: ref.id, plus: ref.plus + 1 }], byId) : r.best;
-      return settleOver({ ...r, vault, credits: r.credits - pay, best });
+      // 스쿼드도 같이 정리한다. 성공은 같은 선수가 오른 카드로 바뀐 것뿐이라 슬롯을
+      // 유지하고 값만 올리고(bumpPlus), 유지·파괴는 pruneSquad 가 vault 에서 실제로
+      // 사라진 자리만 골라 비운다 - sell()과 같은 "마지막 한 장" 규칙이다.
+      const squad = result === "success" ? bumpPlus(r.squad, ref) : pruneSquad(r.squad, vault);
+      return settleOver({ ...r, vault, credits: r.credits - pay, best, squad });
     });
     // 성공하면 오버레이가 다음 단계를 보게 ref 를 올린다. 파괴는 그대로 둬 오버레이가
     // 스스로 "사라졌다"를 표시하게 하고, 유지는 어차피 같은 ref 라 손댈 게 없다.

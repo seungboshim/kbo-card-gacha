@@ -5,9 +5,19 @@
 
 import { MAX_PLUS, START_CREDITS } from "./economy.ts";
 import { type Owned } from "./vault.ts";
+import { BASEBALL_SLOTS, FORMATIONS, FORMATION_SLOTS, type Formation, type Squad } from "./squad.ts";
 
 /** 형태를 바꾸면 올린다. 안 맞는 저장값은 버리고 새로 시작한다. */
-const VERSION = 2;
+const VERSION = 3;
+
+/**
+ * 야구인지 축구인지는 시즌 키 접두사로 가른다. season 은 항상 "kbo-2026" 처럼
+ * "{종목}-{시즌id}" 모양이다(app/_sports/seasons.ts 의 seasonKey). 종목을 매개변수로
+ * 따로 안 받는 이유: newRun·parseRun 은 이미 season 문자열(또는 그 안에 실린 것)을
+ * 갖고 있으니 호출부가 아는 값을 또 넘기게 하지 않으려는 것이다. 시즌 id 에 하이픈이
+ * 들어가는 종목이 생기면 이 파싱부터 고쳐야 한다.
+ */
+const isFootball = (season: string) => season.startsWith("epl-");
 
 /**
  * 최고 기록 후보를 가치순·강화순 각 기준으로 몇 장까지 남길지(solo.tsx 의 mergeBest).
@@ -30,12 +40,25 @@ export type Run = {
   /** 이 런에서 도달한 상위 기록. 가치 내림차순. 강화 중에 터져도 남는다. */
   best: Owned[];
   over: boolean;
+  /** 슬롯 id → 꽂힌 카드. 전시용이라 경제(팩값·강화비·파산)엔 영향이 없다(squad.ts). */
+  squad: Squad;
+  /** 축구만 쓴다. 야구는 슬롯이 고정이라 포메이션 개념이 없다. */
+  formation?: Formation;
 };
 
 export const runKey = (season: string) => `cardgacha:run:${season}`;
 
 export function newRun(season: string): Run {
-  return { v: VERSION, season, credits: START_CREDITS, vault: [], best: [], over: false };
+  return {
+    v: VERSION,
+    season,
+    credits: START_CREDITS,
+    vault: [],
+    best: [],
+    over: false,
+    squad: {},
+    ...(isFootball(season) ? { formation: FORMATIONS[0] } : {}),
+  };
 }
 
 export const serializeRun = (run: Run): string => JSON.stringify(run);
@@ -58,6 +81,14 @@ const isOwned = (x: unknown): x is Owned => {
   );
 };
 
+/**
+ * 슬롯 id → Owned 모양과, 그 id 가 이 종목에 실제로 있는 슬롯인지를 함께 본다.
+ * 모르는 슬롯 id(옛 포메이션이 걷어낸 자리 등)가 하나라도 섞여 있으면 통째로 버린다
+ * - isOwned 가 plus 999 를 막는 것과 같은 이유다.
+ */
+const isValidSquad = (x: unknown, validIds: Set<string>): x is Squad =>
+  typeof x === "object" && x !== null && Object.entries(x).every(([id, o]) => validIds.has(id) && isOwned(o));
+
 /** 저장값을 Run 으로 되읽는다. 버전이나 모양이 안 맞으면 null 이고, 부르는 쪽이 새 런을 만든다. */
 export function parseRun(raw: string | null): Run | null {
   if (!raw) return null;
@@ -75,7 +106,30 @@ export function parseRun(raw: string | null): Run | null {
   if (!Array.isArray(r.vault) || !r.vault.every(isOwned)) return null;
   if (!Array.isArray(r.best) || !r.best.every(isOwned)) return null;
   if (typeof r.over !== "boolean") return null;
-  return { v: r.v, season: r.season, credits: r.credits as number, vault: r.vault, best: r.best, over: r.over };
+
+  // 축구는 포메이션을 먼저 확인해야 그 포메이션의 슬롯 id 로 스쿼드를 검증할 수 있다.
+  // 야구는 슬롯이 고정이라 포메이션이 없다.
+  let formation: Formation | undefined;
+  let validIds: Set<string>;
+  if (isFootball(r.season)) {
+    if (typeof r.formation !== "string" || !(FORMATIONS as readonly string[]).includes(r.formation)) return null;
+    formation = r.formation as Formation;
+    validIds = new Set(FORMATION_SLOTS[formation].map((s) => s.id));
+  } else {
+    validIds = new Set(BASEBALL_SLOTS.map((s) => s.id));
+  }
+  if (!isValidSquad(r.squad, validIds)) return null;
+
+  return {
+    v: r.v,
+    season: r.season,
+    credits: r.credits as number,
+    vault: r.vault,
+    best: r.best,
+    over: r.over,
+    squad: r.squad,
+    ...(formation ? { formation } : {}),
+  };
 }
 
 /**
