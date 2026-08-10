@@ -7,6 +7,8 @@ import { PlayerCard } from "../_game/card";
 import type { Card, SportConfig } from "../_game/deck";
 import { Coin } from "./coin";
 import { cardValue, isBankrupt } from "./economy";
+import { BASEBALL_SLOTS, FORMATION_SLOTS } from "./squad";
+import { SquadField } from "./squad-field";
 import type { Run } from "./storage";
 import type { Owned } from "./vault";
 
@@ -173,10 +175,15 @@ export function Result({
     .sort((a, b) => b.owned.plus - a.owned.plus || worth(b) - worth(a))
     .slice(0, 3);
 
+  // 스쿼드를 한 번도 안 짰으면(run.bestSquad.squad 가 비어 있으면) 스쿼드 자리를
+  // 아예 안 그린다 - "팩을 한 번도 안 사봤어요" 빈 상태와 같은 결이다.
+  const hasBestSquad = Object.keys(run.bestSquad.squad).length > 0;
+  const bestSlots = run.bestSquad.formation ? FORMATION_SLOTS[run.bestSquad.formation] : BASEBALL_SLOTS;
+
   const [selected, setSelected] = useState<Entry | null>(null);
 
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center gap-6 py-10 text-center">
+    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center gap-6 py-10 text-center lg:max-w-3xl">
       <div>
         {/* 파산 조건(제일 싼 팩도 못 사고 보관함도 비었다)을 문구로 풀어 쓰지 않는다.
             규칙 설명은 판정 직전에나 쓸모 있지, 끝난 뒤에는 김만 뺀다. */}
@@ -187,13 +194,36 @@ export function Result({
       </div>
 
       {records.length > 0 ? (
-        <div className="flex w-full flex-col gap-6">
-          <BestRow title="가치순 최고 기록" items={byValue} sport={sport} onSelect={setSelected} />
-          <BestRow title="강화순 최고 기록" items={byPlus} sport={sport} onSelect={setSelected} />
+        // PC 는 좌우로(스쿼드 · 가치순/강화순 top3), 모바일은 위아래로.
+        <div className="flex w-full flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center lg:gap-10">
+          {/* 지금 스쿼드가 아니라 이 런에서 가장 값나갔던 순간의 박제다(storage.ts
+              의 Run.bestSquad) - 나중에 팔거나 강화 정리로 지금 스쿼드가 줄어도
+              이건 그대로 남는다. 슬롯을 눌러도 아무 일도 안 나게 읽기 전용으로 쓴다. */}
+          {hasBestSquad && (
+            <div className="flex w-full flex-col items-center gap-2 lg:w-[260px] lg:shrink-0">
+              <h3 className="text-xs font-bold text-zinc-500">최고 기록 스쿼드</h3>
+              <div className="w-full max-w-[260px]">
+                <SquadField
+                  slots={bestSlots}
+                  squad={run.bestSquad.squad}
+                  byId={byId}
+                  isFootball={!!run.bestSquad.formation}
+                  activeSlotId={null}
+                  onSlotClick={() => {}}
+                />
+              </div>
+              <Coin amount={run.bestSquad.value} className="text-sm font-black text-amber-300" />
+            </div>
+          )}
+          <div className="flex w-full flex-col gap-6 lg:max-w-xs">
+            <BestRow title="가치순 최고 기록" items={byValue} sport={sport} onSelect={setSelected} />
+            <BestRow title="강화순 최고 기록" items={byPlus} sport={sport} onSelect={setSelected} />
+          </div>
         </div>
       ) : (
         // 뽑은 카드는 강화 여부와 상관없이 best 에 들어간다(solo.tsx 의 buy()).
-        // 그래서 여기가 비는 경우는 딱 하나, 팩을 한 번도 안 산 것뿐이다.
+        // 그래서 여기가 비는 경우는 딱 하나, 팩을 한 번도 안 산 것뿐이다(스쿼드에
+        // 카드를 넣으려면 먼저 뽑아야 하니 그때도 이 조건 하나로 같이 걸러진다).
         <p className="rounded-2xl bg-white/5 px-6 py-8 text-sm text-zinc-400 ring-1 ring-white/10">
           팩을 한 번도 안 사봤어요. 다음엔 한 봉 사보세요.
         </p>
