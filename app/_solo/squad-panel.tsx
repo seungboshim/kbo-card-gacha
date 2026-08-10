@@ -165,17 +165,11 @@ export function SquadPanel({
                       : `squad-value-pulse text-xs font-black ${pulse.diff > 0 ? "text-emerald-400" : "text-red-400"}`
                   }
                 >
-                  {pulse.isNewBest ? (
-                    "🏆 신기록"
-                  ) : pulse.diff > 0 ? (
-                    <>
-                      ▲ <Coin amount={pulse.diff} />
-                    </>
-                  ) : (
-                    <>
-                      ▼ <Coin amount={Math.abs(pulse.diff)} />
-                    </>
-                  )}
+                  {pulse.isNewBest
+                    ? "🏆 신기록"
+                    : pulse.diff > 0
+                      ? `▲ ${pulse.diff.toLocaleString()}`
+                      : `▼ ${Math.abs(pulse.diff).toLocaleString()}`}
                 </span>
               )}
             </span>
