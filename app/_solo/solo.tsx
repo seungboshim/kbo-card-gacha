@@ -9,7 +9,16 @@ import { cardValue, isBankrupt, type Pack } from "./economy";
 import { UpgradeOverlay } from "./upgrade-overlay";
 import { applyUpgrade, takeFrom, toSlots, type Owned, type SlotRef, type UpgradeResult } from "./vault";
 import { BEST_KEEP, clearRun, loadRun, newRun, saveRun, type Run } from "./storage";
-import { FORMATION_SLOTS, bumpPlus, carrySquad, isDuplicate, pruneSquad, type Formation } from "./squad";
+import {
+  BASEBALL_SLOTS,
+  FORMATION_SLOTS,
+  bumpPlus,
+  carrySquad,
+  isDuplicate,
+  pruneSquad,
+  squadValue,
+  type Formation,
+} from "./squad";
 import { Opening } from "./opening";
 import { Result } from "./result";
 import { Shop } from "./shop";
@@ -28,6 +37,31 @@ const FOCUS_RING = "outline-none focus-visible:ring-2 focus-visible:ring-white/7
  */
 function settleOver(next: Run): Run {
   return next.over || isBankrupt(next.credits, next.vault.length) ? { ...next, over: true } : next;
+}
+
+/**
+ * 스쿼드 값 필드(prevSquadValue·bestSquad)를 최신화한다. old 는 이번 변동 직전 상태,
+ * next 는 squad·formation 이 이미 반영된 상태다.
+ *
+ * 이전 가치는 이번 변동 직전 값으로 밀어 넣는다 - squad-panel.tsx 가 그 차이로
+ * 상승/하락 이펙트를 그리는 기준이다. 지금 가치가 최고기록보다 크면 최고기록을
+ * (스쿼드·포메이션·가치 통째로) 갈아끼운다.
+ *
+ * placeInSquad·removeFromSquad·changeFormation 뿐 아니라 sell·upgrade 로 스쿼드가
+ * 줄어들 때도 반드시 거쳐야 한다 - 최고기록은 "그때 그랬다"의 박제라 스쿼드가 줄어도
+ * 그대로 남아야 하고(값이 안 늘었으니 안 갈아끼워진다), 이전 가치는 그 시점 값으로라도
+ * 갱신돼야 다음 변동에서 다시 상승/하락을 잴 수 있다.
+ */
+function withSquadValue(old: Run, next: Run, byId: Map<string, Card>): Run {
+  const oldSlots = old.formation ? FORMATION_SLOTS[old.formation] : BASEBALL_SLOTS;
+  const newSlots = next.formation ? FORMATION_SLOTS[next.formation] : BASEBALL_SLOTS;
+  const prevSquadValue = squadValue(old.squad, oldSlots, byId);
+  const value = squadValue(next.squad, newSlots, byId);
+  const bestSquad =
+    value > next.bestSquad.value
+      ? { squad: next.squad, value, ...(next.formation ? { formation: next.formation } : {}) }
+      : next.bestSquad;
+  return { ...next, prevSquadValue, bestSquad };
 }
 
 /**
@@ -185,7 +219,8 @@ export default function Solo({
       // 판 카드가 스쿼드에 꽂혀 있었고 그게 마지막 한 장이었으면 스쿼드에서도 뺀다.
       // 여러 장 중 일부만 팔렸으면(같은 id+강화 수치가 vault 에 남아 있으면) 안 건드린다.
       const squad = pruneSquad(r.squad, vault);
-      return settleOver({ ...r, vault, squad, credits: r.credits + total });
+      // 스쿼드가 정리로 줄었어도 최고기록·이전 가치를 다시 잰다(withSquadValue 주석).
+      return settleOver(withSquadValue(r, { ...r, vault, squad, credits: r.credits + total }, byId));
     });
   }
 
@@ -214,7 +249,7 @@ export default function Solo({
       // 유지하고 값만 올리고(bumpPlus), 유지·파괴는 pruneSquad 가 vault 에서 실제로
       // 사라진 자리만 골라 비운다 - sell()과 같은 "마지막 한 장" 규칙이다.
       const squad = result === "success" ? bumpPlus(r.squad, ref) : pruneSquad(r.squad, vault);
-      return settleOver({ ...r, vault, credits: r.credits - pay, best, squad });
+      return settleOver(withSquadValue(r, { ...r, vault, credits: r.credits - pay, best, squad }, byId));
     });
     // 성공하면 오버레이가 다음 단계를 보게 ref 를 올린다. 파괴는 그대로 둬 오버레이가
     // 스스로 "사라졌다"를 표시하게 하고, 유지는 어차피 같은 ref 라 손댈 게 없다.
@@ -228,7 +263,7 @@ export default function Solo({
     setRun((r) => {
       const owned = r.vault.some((c) => c.id === ref.id && c.plus === ref.plus);
       if (!owned || isDuplicate(r.squad, slotId, ref.id)) return r;
-      return { ...r, squad: { ...r.squad, [slotId]: ref } };
+      return withSquadValue(r, { ...r, squad: { ...r.squad, [slotId]: ref } }, byId);
     });
   }
 
@@ -237,7 +272,7 @@ export default function Solo({
       if (!(slotId in r.squad)) return r;
       const squad = { ...r.squad };
       delete squad[slotId];
-      return { ...r, squad };
+      return withSquadValue(r, { ...r, squad }, byId);
     });
   }
 
@@ -245,7 +280,11 @@ export default function Solo({
   // 비우기 전에 확인을 이미 받았으므로 여기서는 그냥 비운다.
   function changeFormation(f: Formation) {
     // 통째로 비우지 않는다. 새 포메이션에도 있는 자리는 그대로 남긴다(carrySquad 주석 참고).
-    setRun((r) => (r.formation === f ? r : { ...r, formation: f, squad: carrySquad(r.squad, FORMATION_SLOTS[f], byId) }));
+    setRun((r) =>
+      r.formation === f
+        ? r
+        : withSquadValue(r, { ...r, formation: f, squad: carrySquad(r.squad, FORMATION_SLOTS[f], byId) }, byId),
+    );
   }
 
   // 자발적 종료. 파산과 달리 보관함·보유액은 그대로 두고 over 만 켠다.
@@ -336,13 +375,19 @@ export default function Solo({
           )}
         </div>
 
-        {screen === "play" && (
+        {/* ready 를 같이 걸어야 한다. 그렇지 않으면 하이드레이션으로 새 런(빈 스쿼드)이
+            저장된 런으로 갈아끼워지는 순간 값이 훌쩍 뛰어 squad-panel 의 상승 이펙트가
+            로드하자마자 헛돌린다 - ready 가 켜진 뒤에 첫 마운트하면 그 값을 기준선으로
+            잡아서 문제가 안 생긴다. */}
+        {screen === "play" && ready && (
           <SquadDrawer open={squadOpen} onOpenChange={setSquadOpen}>
             <SquadPanel
               squad={run.squad}
               formation={run.formation}
               vaultSlots={slots}
               byId={byId}
+              prevValue={run.prevSquadValue}
+              bestValue={run.bestSquad.value}
               onPlace={placeInSquad}
               onRemove={removeFromSquad}
               onFormationChange={changeFormation}

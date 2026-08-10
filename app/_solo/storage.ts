@@ -8,7 +8,7 @@ import { type Owned } from "./vault.ts";
 import { BASEBALL_SLOTS, FORMATIONS, FORMATION_SLOTS, type Formation, type Squad } from "./squad.ts";
 
 /** 형태를 바꾸면 올린다. 안 맞는 저장값은 버리고 새로 시작한다. */
-const VERSION = 3;
+const VERSION = 4;
 
 /**
  * 야구인지 축구인지는 시즌 키 접두사로 가른다. season 은 항상 "kbo-2026" 처럼
@@ -31,6 +31,18 @@ const isFootball = (season: string) => season.startsWith("epl-");
  */
 export const BEST_KEEP = 5;
 
+/**
+ * 스쿼드 한 벌의 박제. Run.bestSquad 에 쓴다 - 스쿼드만 저장하면 슬롯 id 가 무슨
+ * 자리인지 못 찾는다(슬롯 id 는 포메이션마다 다르게 짓는다, squad.ts). 그때의
+ * 포메이션과 가치까지 통째로 같이 담아야 결산 화면이 그대로 그릴 수 있다.
+ */
+export type SquadRecord = {
+  squad: Squad;
+  /** 축구만 쓴다. 야구는 포메이션 개념이 없다. */
+  formation?: Formation;
+  value: number;
+};
+
 export type Run = {
   v: number;
   /** "kbo-2026" 같은 시즌 키. 시즌마다 런이 따로 굴러간다. */
@@ -44,11 +56,20 @@ export type Run = {
   squad: Squad;
   /** 축구만 쓴다. 야구는 슬롯이 고정이라 포메이션 개념이 없다. */
   formation?: Formation;
+  /**
+   * 스쿼드 가치가 이 런에서 도달한 최고 기록. 결산 화면(result.tsx)은 지금 스쿼드가
+   * 아니라 이걸 그린다. 판매·강화로 스쿼드가 줄어도 이 값은 안 바뀐다 - "그때
+   * 그랬다"의 박제지 지금 상태의 거울이 아니다(solo.tsx 의 withSquadValue).
+   */
+  bestSquad: SquadRecord;
+  /** 방금 전 스쿼드 가치. 다음 변동에서 오르고 내림을 재는 기준이다(squad-panel.tsx). */
+  prevSquadValue: number;
 };
 
 export const runKey = (season: string) => `cardgacha:run:${season}`;
 
 export function newRun(season: string): Run {
+  const football = isFootball(season);
   return {
     v: VERSION,
     season,
@@ -57,7 +78,9 @@ export function newRun(season: string): Run {
     best: [],
     over: false,
     squad: {},
-    ...(isFootball(season) ? { formation: FORMATIONS[0] } : {}),
+    ...(football ? { formation: FORMATIONS[0] } : {}),
+    bestSquad: { squad: {}, value: 0, ...(football ? { formation: FORMATIONS[0] } : {}) },
+    prevSquadValue: 0,
   };
 }
 
@@ -89,6 +112,26 @@ const isOwned = (x: unknown): x is Owned => {
 const isValidSquad = (x: unknown, validIds: Set<string>): x is Squad =>
   typeof x === "object" && x !== null && Object.entries(x).every(([id, o]) => validIds.has(id) && isOwned(o));
 
+/**
+ * 시즌과 포메이션 후보로 유효한 슬롯 id 집합을 구한다. 축구인데 포메이션이 없거나
+ * 모르는 값이면 null. top-level squad 검증과 bestSquad 검증이 같은 로직을 타서
+ * 함수로 뽑았다 - bestSquad 는 지금과 다른 포메이션을 박제하고 있을 수 있다(그
+ * 기록을 세운 뒤 유저가 포메이션을 바꿨을 수 있어서) 각자 따로 검증해야 한다.
+ */
+function resolveSlots(
+  season: string,
+  formationCandidate: unknown,
+): { formation?: Formation; validIds: Set<string> } | null {
+  if (isFootball(season)) {
+    if (typeof formationCandidate !== "string" || !(FORMATIONS as readonly string[]).includes(formationCandidate)) {
+      return null;
+    }
+    const formation = formationCandidate as Formation;
+    return { formation, validIds: new Set(FORMATION_SLOTS[formation].map((s) => s.id)) };
+  }
+  return { validIds: new Set(BASEBALL_SLOTS.map((s) => s.id)) };
+}
+
 /** 저장값을 Run 으로 되읽는다. 버전이나 모양이 안 맞으면 null 이고, 부르는 쪽이 새 런을 만든다. */
 export function parseRun(raw: string | null): Run | null {
   if (!raw) return null;
@@ -109,16 +152,20 @@ export function parseRun(raw: string | null): Run | null {
 
   // 축구는 포메이션을 먼저 확인해야 그 포메이션의 슬롯 id 로 스쿼드를 검증할 수 있다.
   // 야구는 슬롯이 고정이라 포메이션이 없다.
-  let formation: Formation | undefined;
-  let validIds: Set<string>;
-  if (isFootball(r.season)) {
-    if (typeof r.formation !== "string" || !(FORMATIONS as readonly string[]).includes(r.formation)) return null;
-    formation = r.formation as Formation;
-    validIds = new Set(FORMATION_SLOTS[formation].map((s) => s.id));
-  } else {
-    validIds = new Set(BASEBALL_SLOTS.map((s) => s.id));
-  }
-  if (!isValidSquad(r.squad, validIds)) return null;
+  const resolved = resolveSlots(r.season, r.formation);
+  if (!resolved) return null;
+  if (!isValidSquad(r.squad, resolved.validIds)) return null;
+
+  if (!Number.isFinite(r.prevSquadValue) || (r.prevSquadValue as number) < 0) return null;
+
+  // bestSquad 도 squad 와 똑같이(모르는 슬롯 id·모르는 포메이션이면 통째로 버리기) 본다.
+  // 그때 박제한 포메이션이 지금 formation 과 다를 수 있어 따로 resolveSlots 를 부른다.
+  if (typeof r.bestSquad !== "object" || r.bestSquad === null) return null;
+  const bs = r.bestSquad as Partial<SquadRecord>;
+  if (!Number.isFinite(bs.value) || (bs.value as number) < 0) return null;
+  const bsResolved = resolveSlots(r.season, bs.formation);
+  if (!bsResolved) return null;
+  if (!isValidSquad(bs.squad, bsResolved.validIds)) return null;
 
   return {
     v: r.v,
@@ -128,7 +175,13 @@ export function parseRun(raw: string | null): Run | null {
     best: r.best,
     over: r.over,
     squad: r.squad,
-    ...(formation ? { formation } : {}),
+    ...(resolved.formation ? { formation: resolved.formation } : {}),
+    bestSquad: {
+      squad: bs.squad as Squad,
+      value: bs.value as number,
+      ...(bsResolved.formation ? { formation: bsResolved.formation } : {}),
+    },
+    prevSquadValue: r.prevSquadValue as number,
   };
 }
 
