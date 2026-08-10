@@ -32,6 +32,8 @@ export function SquadPanel({
   formation,
   vaultSlots,
   byId,
+  prevValue,
+  bestValue,
   onPlace,
   onRemove,
   onFormationChange,
@@ -40,6 +42,13 @@ export function SquadPanel({
   formation?: Formation;
   vaultSlots: VaultSlot[];
   byId: Map<string, Card>;
+  /** 직전 스쿼드 가치(storage.ts 의 Run.prevSquadValue). 지금 가치와의 차이가
+   *  상승/하락 이펙트의 근거다. */
+  prevValue: number;
+  /** 이 런에서 도달한 스쿼드 최고 가치(Run.bestSquad.value). solo.tsx 의
+   *  withSquadValue 가 오를 때만 갱신하므로, 이 값이 바뀌었다는 것 자체가 곧
+   *  "방금 신기록을 세웠다"는 신호다. */
+  bestValue: number;
   onPlace: (slotId: string, ref: SlotRef) => void;
   onRemove: (slotId: string) => void;
   onFormationChange: (f: Formation) => void;
@@ -61,6 +70,24 @@ export function SquadPanel({
     const withSlot = squadValue({ [slotId]: owned }, fieldSlots, byId);
     return withSlot > base;
   }).length;
+
+  // 스쿼드 가치 변동 이펙트. useEffect 안에서 setState 하면 lint 에러라
+  // (react-hooks/set-state-in-effect, Next 16 React Compiler 규칙, CLAUDE.md 근거)
+  // "prop 이 바뀌면 렌더 중에 상태를 맞춘다" 패턴을 쓴다(React 공식 문서: Adjusting
+  // state when a prop changes) - effect 가 아니라 렌더 바디에서 직접 부르므로 그
+  // 규칙에 안 걸린다. key 를 바꿔 CSS 애니메이션을 재생시키는 수법은
+  // upgrade-overlay.tsx 의 resultKey 와 같다.
+  const [lastValue, setLastValue] = useState(value);
+  const [lastBestValue, setLastBestValue] = useState(bestValue);
+  const [pulse, setPulse] = useState<{ key: number; diff: number; isNewBest: boolean } | null>(null);
+  if (value !== lastValue || bestValue !== lastBestValue) {
+    // best 는 solo.tsx(withSquadValue)에서 오를 때만 갱신되므로, 바뀐 것 자체가
+    // 곧 "방금 신기록을 세웠다"는 신호다.
+    const isNewBest = bestValue !== lastBestValue;
+    setLastValue(value);
+    setLastBestValue(bestValue);
+    setPulse((p) => ({ key: (p?.key ?? 0) + 1, diff: value - prevValue, isNewBest }));
+  }
 
   const activeSlotDef = activeSlotId ? (fieldSlots.find((s) => s.id === activeSlotId) ?? null) : null;
 
@@ -118,17 +145,57 @@ export function SquadPanel({
         onSlotClick={setActiveSlotId}
       />
 
-      <div className="flex items-center justify-between gap-3 rounded-xl bg-white/5 px-4 py-3 ring-1 ring-white/10">
-        <div>
-          <p className="text-xs text-zinc-500">스쿼드 가치</p>
-          <Coin amount={value} className="text-lg font-black text-amber-300" />
+      <div className="flex flex-col gap-1 rounded-xl bg-white/5 px-4 py-3 ring-1 ring-white/10">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs text-zinc-500">스쿼드 가치</p>
+            <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <Coin amount={value} className="text-lg font-black text-amber-300" />
+              {/* 장식용 이펙트. 잠깐 떴다 사라진다(globals.css, forwards로 끝에서
+                  투명 고정) - 계속 떠 있으면 시끄러워서다. 방향은 화살표+색 글자로
+                  담아 움직임이 꺼진 환경에서도 읽을 수 있고, 그 아래 role="status"
+                  줄이 애니메이션과 상관없이 같은 내용을 알린다. */}
+              {pulse && (
+                <span
+                  key={pulse.key}
+                  aria-hidden="true"
+                  className={
+                    pulse.isNewBest
+                      ? "squad-value-record text-xs font-black text-amber-300"
+                      : `squad-value-pulse text-xs font-black ${pulse.diff > 0 ? "text-emerald-400" : "text-red-400"}`
+                  }
+                >
+                  {pulse.isNewBest ? (
+                    "🏆 신기록"
+                  ) : pulse.diff > 0 ? (
+                    <>
+                      ▲ <Coin amount={pulse.diff} />
+                    </>
+                  ) : (
+                    <>
+                      ▼ <Coin amount={Math.abs(pulse.diff)} />
+                    </>
+                  )}
+                </span>
+              )}
+            </span>
+          </div>
+          <div className="flex flex-col items-end gap-0.5 text-xs text-zinc-400">
+            <span>
+              {fieldSlots.length}칸 중 {filledCount}칸
+            </span>
+            {boostedCount > 0 && <span className="text-emerald-400">주 포지션 {boostedCount}명</span>}
+          </div>
         </div>
-        <div className="flex flex-col items-end gap-0.5 text-xs text-zinc-400">
-          <span>
-            {fieldSlots.length}칸 중 {filledCount}칸
-          </span>
-          {boostedCount > 0 && <span className="text-emerald-400">주 포지션 {boostedCount}명</span>}
-        </div>
+        {/* 스크린리더와, 움직임이 꺼진 환경에서도 글자로 방향을 알린다(upgrade-overlay.tsx 선례). */}
+        <p role="status" aria-live="polite" className="min-h-[1em] text-left text-[11px] font-bold text-zinc-500">
+          {pulse &&
+            (pulse.isNewBest
+              ? "스쿼드 최고 기록을 새로 세웠어요."
+              : pulse.diff > 0
+                ? "스쿼드 가치가 올랐어요."
+                : "스쿼드 가치가 내렸어요.")}
+        </p>
       </div>
 
       {activeSlotDef && (

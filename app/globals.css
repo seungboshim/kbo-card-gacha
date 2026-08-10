@@ -84,6 +84,54 @@
   }
 }
 
+/* 스쿼드 가치 변동 이펙트(squad-panel.tsx). 잠깐 떴다 사라진다(둘 다 forwards로
+   끝에서 투명 고정) - 계속 떠 있으면 시끄러워서다. 상승/하락은 화살표+색 글자로만
+   갈라 애니메이션 자체가 꺼져도(prefers-reduced-motion, 파일 맨 아래) 방향을 읽을
+   수 있다. 최고기록 갱신은 스케일 팝 + 금색으로 아예 다르게 줘서 위 둘과 안
+   헷갈리게 한다. */
+@keyframes squad-value-pulse {
+  0% {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.squad-value-pulse {
+  animation: squad-value-pulse 1.6s var(--upg-timing) both;
+}
+
+@keyframes squad-value-record {
+  0% {
+    opacity: 0;
+    transform: scale(0.75);
+  }
+  25% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  40% {
+    transform: scale(1);
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.squad-value-record {
+  animation: squad-value-record 2s var(--upg-timing) both;
+}
+
 body {
   background: #09090b;
   color: #ededed;
