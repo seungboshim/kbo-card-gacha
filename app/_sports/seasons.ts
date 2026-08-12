@@ -36,5 +36,11 @@ export const SPORT_KEYS = Object.keys(SPORT) as Season["sport"][];
 
 export const seasonsOf = (sport: Season["sport"]) => SEASONS.filter((s) => s.sport === sport);
 
+/** 중간 선택 화면 없이 종목 URL로 들어왔을 때 보낼 대표 시즌. 라이브를 먼저 고른다. */
+export const defaultSeasonOf = (sport: Season["sport"]) => {
+  const seasons = seasonsOf(sport);
+  return seasons.find((season) => season.live) ?? seasons.at(-1);
+};
+
 /** 라이브 시즌을 하나라도 가진 종목인가. 메인화면의 LIVE 배지가 이걸 따라간다. */
 export const hasLive = (sport: Season["sport"]) => seasonsOf(sport).some((s) => s.live);

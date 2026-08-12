@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "카드깡 — KBO · 프리미어리그",
+  title: "squad gacha — KBO · EPL",
   description: "KBO, 프리미어리그 선수 카드를 뽑고 올 시즌 성적을 확인해요",
 };
 

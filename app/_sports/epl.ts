@@ -145,7 +145,7 @@ const MINI_STATS: Record<Role, [string, string]> = {
 
 export const EPL: SportConfig = {
   key: "epl",
-  title: "프리미어리그 카드깡",
+  title: "프리미어리그 squad gacha",
   seasonLabel: "25/26",
   packSub: "25/26 EPL",
   teamColor: TEAM_COLOR,

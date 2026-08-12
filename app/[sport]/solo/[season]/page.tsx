@@ -15,7 +15,7 @@ const find = (sport: string, season: string): Season | undefined =>
 export async function generateMetadata({ params }: { params: Promise<{ sport: string; season: string }> }) {
   const { sport, season } = await params;
   const s = find(sport, season);
-  return { title: s ? `${SPORT[s.sport].name} 혼자서 ${s.label}` : "카드깡" };
+  return { title: s ? `${SPORT[s.sport].name} 혼자서 ${s.label} · squad gacha` : "squad gacha" };
 }
 
 export default async function Page({ params }: { params: Promise<{ sport: string; season: string }> }) {

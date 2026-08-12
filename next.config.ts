@@ -14,8 +14,8 @@ const nextConfig: NextConfig = {
   // 브라우저 캐시에 박혀 있으면 되돌리기 어렵기 때문이다.
   async redirects() {
     return [
-      { source: "/kbo", destination: "/kbo/multi", permanent: false },
-      { source: "/epl", destination: "/epl/multi", permanent: false },
+      { source: "/kbo", destination: "/kbo/solo/2026", permanent: false },
+      { source: "/epl", destination: "/epl/solo/2526", permanent: false },
     ];
   },
 };
